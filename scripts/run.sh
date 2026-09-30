@@ -14,6 +14,9 @@ PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
 git config core.longpaths true 2>/dev/null
 
 "$PY" scripts/brief.py validate || { echo "run: BRIEF.yaml invalid or missing" >&2; exit 2; }
+# a terminal RUN_STATE left by an earlier, merged mission (different goal) is moved to docs/runs/ so this one starts fresh
+arch="$("$PY" scripts/ledger.py archive-stale)" || { echo "run: cannot check for a stale run" >&2; exit 2; }
+case "$arch" in archived*) echo "run: previous mission $arch";; esac
 
 terminal() { grep -Eq '"state": ?"(DONE|DONE_PARTIAL|SAFE_STOP|HALT)"' docs/RUN_STATE 2>/dev/null; }
 if terminal; then echo "run: already terminal: $(cat docs/RUN_STATE)"; exit 0; fi

@@ -58,7 +58,8 @@ serial=$(( $(date +%s) - start ))
 start=$(date +%s)
 (cd "$d" && QS_TEST_JOBS=2 bash tests/run.sh) >/dev/null 2>&1
 parallel=$(( $(date +%s) - start ))
-if [ "$parallel" -lt "$serial" ] && [ "$parallel" -lt 6 ]; then
+# relative only: real overlap saves about one test's 3s whatever the machine load, an absolute bound does not hold under load
+if [ "$parallel" -le $(( serial - 2 )) ]; then
   ok "QS_TEST_JOBS=2 runs two 3s tests concurrently (parallel=${parallel}s < serial=${serial}s)"
 else
   bad "QS_TEST_JOBS=2 runs two 3s tests concurrently (parallel=${parallel}s, serial=${serial}s)"

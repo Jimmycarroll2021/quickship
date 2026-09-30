@@ -110,8 +110,10 @@ hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input"
 
 # budget.py with no --transcript falls back to the stored path and sums the same tokens
 printf '%s' "$TR" > "$S/transcript_path"
-with_flag="$(budget --transcript "$TR")"; with_flag="${with_flag//$'\r'/}"
-without_flag="$(budget)"; without_flag="${without_flag//$'\r'/}"
+# elapsed_min is dropped from the comparison: the two calls are seconds apart and can straddle a 0.1-minute boundary
+strip_elapsed() { sed -E 's/"elapsed_min": [0-9.]+, //'; }
+with_flag="$(budget --transcript "$TR" | strip_elapsed)"; with_flag="${with_flag//$'\r'/}"
+without_flag="$(budget | strip_elapsed)"; without_flag="${without_flag//$'\r'/}"
 [ "$with_flag" = "$without_flag" ] && ok "budget.py falls back to stored transcript_path" || bad "budget.py fallback mismatch ('$without_flag' vs '$with_flag')"
 expect_contains "fallback sums the fixture transcript" '"tokens": 10,' "$without_flag"
 

@@ -67,4 +67,14 @@ cp "$d3/bin/claude" "$d4/bin/claude"   # the lead comes back healthy
 : > "$d4/stub.log"; run "$d4" >/dev/null 2>&1
 expect_contains "killed run: next start resumes that session" "--resume" "$(cat "$d4/stub.log")"
 expect_contains "killed run: resume uses the derived id" "abcd-1234" "$(cat "$d4/stub.log")"
+
+# --- stale terminal state from an earlier, merged mission (different goal): archived, then the run starts ---
+d5="$(mk)"
+printf '{"state":"DONE","reason":"old","at":"2026-09-01T00:00:00Z"}' > "$d5/docs/RUN_STATE"
+printf '{"goal":"An earlier mission","plan":[],"facts":[],"assumptions":[],"blocked":[],"replan_count":0,"stall_count":0,"is_complete":true}' > "$d5/docs/ledgers/task.json"
+printf 'old-session' > "$d5/.claude/state/session_id" 2>/dev/null || { mkdir -p "$d5/.claude/state"; printf 'old-session' > "$d5/.claude/state/session_id"; }
+expect_exit "stale terminal state: run exits 0" 0 run "$d5"
+expect_contains "stale terminal state: claude is called fresh" "-p" "$(cat "$d5/stub.log")"
+expect_contains "stale terminal state: not resumed with the old id" "" "$(grep -c 'old-session' "$d5/stub.log" | sed 's/^0$//')"
+expect_contains "stale terminal state: old run archived under docs/runs" "1" "$(ls -d "$d5"/docs/runs/*/ 2>/dev/null | wc -l | tr -d ' ')"
 finish

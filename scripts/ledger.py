@@ -285,6 +285,68 @@ def cmd_tier(a) -> int:
     return 0
 
 
+TERMINAL_STATES = ("DONE", "DONE_PARTIAL", "SAFE_STOP", "HALT")
+RUN_ARTIFACTS = ("RUN_STATE", "REPORT.md", "plan.md", "overseer.md")
+RUNTIME_STATE = ("session_id", "steps", "restarts", "stop_attempts", "idem.jsonl", "current_step.json", "tier",
+                 "cancel", "force_replan", "transcript_path", "last_run.json")
+
+
+def cmd_archive_stale(a) -> int:
+    """A merged mission PR carries docs/RUN_STATE and the ledgers into the next mission's checkout. When that
+    terminal state belongs to a different goal than the current brief, move the old run under docs/runs/ and
+    reset the runtime state so the new mission starts fresh. Prints `current` or `archived <dir>`."""
+    import re
+    import shutil
+    docs = root() / "docs"
+    rs = docs / "RUN_STATE"
+    brief_p = state_dir() / "brief.json"
+    if not rs.is_file() or not brief_p.is_file():
+        print("current")
+        return 0
+    try:
+        state = json.loads(rs.read_text(encoding="utf-8").strip() or "{}")
+        goal = json.loads(brief_p.read_text(encoding="utf-8"))["mission"]["goal"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise LedgerError(f"cannot read RUN_STATE or brief.json: {exc}") from exc
+    if state.get("state") not in TERMINAL_STATES:
+        print("current")
+        return 0
+    old_goal = None
+    if task_path().is_file():
+        try:
+            old_goal = json.loads(task_path().read_text(encoding="utf-8")).get("goal")
+        except json.JSONDecodeError:
+            old_goal = None
+    if old_goal is None or old_goal == goal:
+        print("current")
+        return 0
+    slug = re.sub(r"[^a-z0-9]+", "-", old_goal.lower()).strip("-")[:24].rstrip("-") or "run"
+    at = re.sub(r"[^0-9A-Za-z]+", "-", str(state.get("at") or now())).strip("-")
+    dest = docs / "runs" / f"{at}-{slug}"
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = docs / "runs" / f"{at}-{slug}-{n}"
+    dest.mkdir(parents=True)
+    for name in RUN_ARTIFACTS:
+        p = docs / name
+        if p.is_file():
+            shutil.move(str(p), str(dest / name))
+    if ledger_dir().is_dir():
+        shutil.move(str(ledger_dir()), str(dest / "ledgers"))
+    s = state_dir()
+    for name in RUNTIME_STATE:
+        p = s / name
+        if p.is_file():
+            p.unlink()
+    if (s / "legs").is_dir():
+        shutil.rmtree(s / "legs")
+    s.mkdir(parents=True, exist_ok=True)
+    write_atomic(s / "started_at", now() + "\n")
+    print(f"archived {dest.relative_to(root()).as_posix()}")
+    return 0
+
+
 def cmd_facts_invalidate(a) -> int:
     task = load_task()
     n = 0
@@ -325,6 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_step_start)
     s = sub.add_parser("facts-invalidate"); s.add_argument("substring"); s.set_defaults(fn=cmd_facts_invalidate)
     s = sub.add_parser("tier"); s.add_argument("value", nargs="?", default=None); s.set_defaults(fn=cmd_tier)
+    sub.add_parser("archive-stale").set_defaults(fn=cmd_archive_stale)
     return p
 
 

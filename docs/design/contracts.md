@@ -115,6 +115,8 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 
 `docs/RUN_STATE` is exactly one line: `{"state": "DONE|DONE_PARTIAL|SAFE_STOP|HALT", "reason": "...", "at": "..."}`.
 
+A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/ledgers/` into the next mission's checkout. `ledger.py archive-stale` (run by `run.sh` after the brief validates, and by the lead at step 1) prints `current` when there is no terminal RUN_STATE or its ledgers carry the brief's goal; otherwise it moves those files to `docs/runs/<at>-<goal-slug>/`, deletes the runtime state (`session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`), rewrites `started_at`, and prints `archived <dir>`.
+
 `scripts/hooks/stop.sh` (Stop hook): if brief.json is absent → `exec bash "$ROOT/scripts/gate.sh"` (ROOT = `CLAUDE_PROJECT_DIR`). If a run is active and RUN_STATE is missing or not terminal: increment `$S/stop_attempts`; on attempts 1 and 2 block with reason `no terminal RUN_STATE: write docs/RUN_STATE and docs/REPORT.md before stopping`; on attempt 3 write `{"state":"SAFE_STOP","reason":"lead ended without terminal state","at":...}` yourself and allow. If RUN_STATE is `HALT` → exit 0 without the gate. Otherwise run the gate and pass its exit through.
 
 ## Idempotency

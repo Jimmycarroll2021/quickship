@@ -146,4 +146,31 @@ if [ -f "$S/tier" ]; then ok "tier file exists after creating missing state dir"
 rm -f "$L/task.json"
 expect_exit "task-add without task.json exits 2" 2 led task-add x --goal y --owns z
 expect_exit "hash without task.json exits 2" 2 led hash
+
+# --- archive-stale: a merged mission PR carries RUN_STATE and the ledgers into the next mission's checkout;
+# a terminal RUN_STATE that belongs to a different goal than brief.json is moved to docs/runs/ and the runtime state reset ---
+D="$CLAUDE_PROJECT_DIR/docs"
+printf '{"mission":{"goal":"Goal A"},"budgets":{"replan_limit":3}}' > "$S/brief.json"
+rm -f "$D/RUN_STATE"; rm -rf "$D/runs"
+expect_exit "archive-stale: no RUN_STATE exits 0" 0 led archive-stale
+expect_contains "archive-stale: no RUN_STATE says current" "current" "$OUT"
+reset "Goal A"
+printf '{"state":"DONE","reason":"x","at":"2026-09-30T12:00:00Z"}\n' > "$D/RUN_STATE"; echo report > "$D/REPORT.md"; echo plan > "$D/plan.md"
+printf 'sess-1' > "$S/session_id"; echo 40 > "$S/steps"; echo 2 > "$S/restarts"
+expect_exit "archive-stale: same goal exits 0" 0 led archive-stale
+expect_contains "archive-stale: same goal says current" "current" "$OUT"
+if [ -f "$D/RUN_STATE" ] && [ -f "$L/task.json" ] && [ -f "$S/session_id" ]; then ok "archive-stale: same goal leaves everything in place"; else bad "archive-stale: same goal leaves everything in place"; fi
+printf '{"mission":{"goal":"Goal B"},"budgets":{"replan_limit":3}}' > "$S/brief.json"
+expect_exit "archive-stale: different goal exits 0" 0 led archive-stale
+expect_contains "archive-stale: different goal says archived" "archived" "$OUT"
+if [ ! -e "$D/RUN_STATE" ] && [ ! -e "$D/REPORT.md" ] && [ ! -e "$D/plan.md" ] && [ ! -e "$L/task.json" ]; then ok "archive-stale: old run artifacts gone"; else bad "archive-stale: old run artifacts gone"; fi
+runs="$(ls -d "$D"/runs/*/ 2>/dev/null | wc -l | tr -d ' ')"
+expect_contains "archive-stale: one dir under docs/runs" "1" "$runs"
+rdir="$(ls -d "$D"/runs/*/ | head -1)"
+if [ -f "$rdir/RUN_STATE" ] && [ -f "$rdir/REPORT.md" ] && [ -f "$rdir/ledgers/task.json" ]; then ok "archive-stale: artifacts moved into the run dir"; else bad "archive-stale: artifacts moved into the run dir ($rdir)"; fi
+expect_contains "archive-stale: run dir named by date and goal" "2026-09-30" "$rdir"
+if [ ! -e "$S/session_id" ] && [ ! -e "$S/steps" ] && [ ! -e "$S/restarts" ]; then ok "archive-stale: runtime state reset"; else bad "archive-stale: runtime state reset"; fi
+if [ -s "$S/started_at" ]; then ok "archive-stale: started_at rewritten"; else bad "archive-stale: started_at rewritten"; fi
+expect_exit "archive-stale: second call is a no-op" 0 led archive-stale
+expect_contains "archive-stale: second call says current" "current" "$OUT"
 finish
