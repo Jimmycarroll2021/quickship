@@ -45,17 +45,22 @@ These rules are enforced, not just stated: `.claude/settings.json` denies the ma
 
 A worker never fetches the web and a researcher never runs commands or pushes, so no single step can both read untrusted content and send data out (the lethal-trifecta rule). If a worker returns `NEEDS-RESEARCH`, dispatch a researcher as a separate step, then re-dispatch the worker with the file path.
 
-## Orchestration
-For any goal touching more than 3 files:
+## Running a mission
+The human writes `BRIEF.yaml` (see `BRIEF.example.yaml`: goal, deliverables, success criteria, budgets, permissions) and runs `bash scripts/run.sh`. That validates the brief, starts or resumes the lead session headlessly with the allow list passed via `--allowedTools`, and runs the overseer beside it. The human reads `docs/REPORT.md` when `docs/RUN_STATE` becomes terminal. Nothing else is asked of them. Contracts for every file and hook are in `docs/design/contracts.md`.
 
-1. **Plan.** Run `planner`. It writes `docs/plan.md`, a numbered list of tasks, each owning a disjoint set of files.
-2. **Dispatch.** For each task, create a worktree on its own branch off the session branch:
-   `git worktree add .claude/worktrees/<task-slug> -b <session-branch>--<task-slug>`
-   Dispatch one `worker` per task, all in parallel, each told its worktree path and owned files.
-3. **Worker output.** Workers return file paths and a 3-line summary only, never diffs or logs.
-4. **Integrate.** The lead merges each task branch into the session branch (`git merge --no-ff <session-branch>--<task-slug>`), then runs `reviewer`, then `bash scripts/gate.sh`.
-5. **Log.** After every merged task, append one line to `docs/decisions.md`: date, task, decision, why.
-6. **Review loop.** Reviewer FAIL → fix and re-run reviewer and gate, max 3 cycles. Still failing → open the PR with `[needs-human]` in the title (and the `needs-human` label if it exists) and stop.
-7. **Clean up.** After merging: `git worktree remove .claude/worktrees/<task-slug>` and `git branch -d <session-branch>--<task-slug>`. Never push task branches.
+## Lead loop
+You never ask a question. Nobody is reading. Every choice is one of: choose the default and record it, skip and record it, or safe-stop with a report. `python3` below means `python` where `python3` is missing.
+
+0. **Anchor.** Read `.claude/state/brief.json` (written by `python3 scripts/brief.py validate`). Its goal, success criteria and permissions govern every step and are re-read every turn.
+1. **Resume.** If `docs/RUN_STATE` is terminal, stop. If `docs/ledgers/task.json` exists, load it: `merged` tasks are done; for `dispatched` tasks check `git worktree list` and `git branch --list` and reuse what exists. Otherwise `python3 scripts/ledger.py init --goal "<goal>"` and `echo plan > .claude/state/tier`.
+2. **Plan.** Run `planner`. It writes `docs/plan.md` and registers tasks in the ledger. On a replan, tell it the stall or failure reason; it must invalidate disproved facts and change the approach. Then `echo act > .claude/state/tier`.
+3. **Check, every turn before dispatch.** `python3 scripts/budget.py`: any dimension exhausted → step 8 as `DONE_PARTIAL`. `.claude/state/cancel` exists → step 8 as `SAFE_STOP`. `.claude/state/force_replan` exists → delete it, `python3 scripts/ledger.py replan` (exit 3 → step 8 as `SAFE_STOP`), step 2.
+4. **Dispatch.** Take the next `pending` task. `python3 scripts/ledger.py step-start <slug> --legs <untrusted_content|outbound|none>` (a task that needs the web gets a `researcher` step first, never both legs in one step). `task-set <slug> dispatched`, `append dispatched <slug> "<goal>"`. Create the worktree only if absent: `git worktree add .claude/worktrees/<slug> -b <session-branch>--<slug>`. Dispatch one `worker` (or `researcher`), told its worktree path and owned files, with a 20-minute limit; a timeout is `append timeout <slug> "worker timeout"`. Independent tasks may run in parallel, one step id each.
+5. **Integrate.** `git merge --no-ff <session-branch>--<slug>`, run `reviewer`, run `bash scripts/gate.sh`. Success: `task-set <slug> merged --commit <sha>`, `append merged <slug> "<summary>"`, one row in `docs/decisions.md`. Failure: `append failed <slug> "<first line of the error>"`, re-dispatch with the error in context, at most 3 times, then `task-set <slug> failed`.
+6. **Stall check, after every task.** `python3 scripts/ledger.py stall-check`. Exit 1 means a stall was counted; when `stall_count` exceeds `budgets.stall_limit`, `python3 scripts/ledger.py replan` (exit 3 → step 8 as `SAFE_STOP`) and go to step 2.
+7. **Ambiguity and irreversibles.** An underdetermined choice: pick the option that best fits the goal, `append assumption <slug> "<choice>"`, continue. An irreversible action not matched by `permissions.irreversible.allow` in the brief: do not run it, `append blocked <slug> "<action>"`, route around it. A hook denial is a blocked step, never a reason to retry the same command.
+8. **Synthesis**, when no task is `pending` or a terminal condition fired: `python3 scripts/check_criteria.py`. Failing criteria with budget left become new tasks (steps 4 to 6), at most `budgets.critic_rounds` times. Then `reviewer` as critic (it grades any `judge` criterion PASS or FAIL). Then the gate. Then push the session branch and `gh pr create` (both idempotent; a repeat is denied and the recorded result stands). The PR title gets `[partial]` for `DONE_PARTIAL`.
+9. **Terminate.** Write `docs/REPORT.md`: state, deliverables and PR URL, criteria table, assumptions, blocked steps, uncompensated side effects (pushed branches, open PR), budget used per dimension, replans with reasons, stalls, overseer notes, gaps. Then write `docs/RUN_STATE` as one line: `{"state":"DONE|DONE_PARTIAL|SAFE_STOP|HALT","reason":"...","at":"<iso utc>"}`. `HALT` is only for a policy violation (a secret committed, a sandbox breach) and skips synthesis. Then stop. The Stop hook refuses to end an active run without a terminal `docs/RUN_STATE`.
+10. **Clean up** after each merge: `git worktree remove .claude/worktrees/<slug>` and `git branch -d <session-branch>--<slug>`. Never push task branches.
 
 `.claude/worktrees/`, `.claude/state/` and `work/_untrusted/` are gitignored. Never `git add` them.

@@ -1,27 +1,58 @@
 #!/usr/bin/env bash
-# PreToolUse guard. Enforces the CLAUDE.md hard rules from inside the repo, so they hold in cloud
+# PreToolUse/PostToolUse guard. Enforces the CLAUDE.md hard rules from inside the repo, so they hold in cloud
 # sessions and fresh clones where ~/.claude settings do not exist. Fails closed: malformed input -> exit 2.
 # Input: hook JSON on stdin. Exit 0 = allow, exit 2 = deny (reason on stderr).
+#
+# Clauses, in order:  1 hard rules (always)   2 overseer cancel flag   3 plan/act tier   4 lethal-trifecta legs.
+# Clauses 2-4 act only when their state file exists (.claude/state/{cancel,tier,current_step.json}), i.e. during a run.
+# PostToolUse never denies; it only records the leg a tool call used (clause 4).
 set -u
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
 in="$(cat)"
 parsed="$(printf '%s' "$in" | "$PY" -c '
 import json, sys
-d = json.load(sys.stdin); t = d["tool_name"]; i = d["tool_input"]
+d = json.load(sys.stdin); e = d.get("hook_event_name", "PreToolUse"); t = d["tool_name"]; i = d["tool_input"]
 if t == "Bash": v = i["command"]
 elif t in ("Write", "Edit", "MultiEdit", "Read"): v = i["file_path"]
 else: v = i.get("url") or i.get("query") or ""
-print(t); print(str(v).replace("\n", " "))
+print(e); print(t); print(str(v).replace("\n", " "))
 ' 2>/dev/null)" || { echo "guard: malformed hook input, denied" >&2; exit 2; }
 parsed="${parsed//$'\r'/}"   # python on Windows emits CRLF
-tool="${parsed%%$'\n'*}"; arg="${parsed#*$'\n'}"
+event="${parsed%%$'\n'*}"; rest="${parsed#*$'\n'}"
+tool="${rest%%$'\n'*}"; arg="${rest#*$'\n'}"
 S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
-printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$tool" "$arg" >> "$S/hook_log" 2>/dev/null
 deny() { echo "guard: denied ($1): $tool $arg" >&2; exit 2; }
 is_env_file() { # basename is .env or .env.<x>, except *.example|sample|template
   local b="${1##*/}"
   [[ "$b" =~ ^\.env(\..+)?$ ]] && ! [[ "$b" =~ \.(example|sample|template)$ ]]
 }
+leg_of() { # untrusted_content | outbound | none, for this tool call
+  case "$tool" in
+    WebFetch|WebSearch) echo untrusted_content;;
+    Read) [[ "$arg" =~ (^|/)work/_untrusted/ ]] && echo untrusted_content || echo none;;
+    Bash)
+      if [[ "$arg" =~ git[[:space:]]+push|gh[[:space:]]+(pr|issue|release)[[:space:]]+(create|comment|edit|merge|close)|npm[[:space:]]+publish ]]; then echo outbound
+      elif [[ "$arg" =~ (^|[[:space:]])curl[[:space:]] ]] && [[ "$arg" =~ -X[[:space:]]*(POST|PUT|PATCH|DELETE)|--data|[[:space:]]-d[[:space:]]|--upload-file|[[:space:]]-T[[:space:]] ]]; then echo outbound
+      elif [[ "$arg" =~ (^|[[:space:]])(curl|wget)[[:space:]] ]]; then echo untrusted_content
+      elif [[ "$arg" =~ work/_untrusted/ ]]; then echo untrusted_content
+      else echo none; fi;;
+    *) echo none;;
+  esac
+}
+
+# --- PostToolUse: record the leg for the current step, never deny ---
+if [ "$event" = PostToolUse ]; then
+  if [ -f "$S/current_step.json" ]; then
+    sid="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id","nostep"))' "$S/current_step.json" 2>/dev/null)"; sid="${sid//$'\r'/}"
+    leg="$(leg_of)"; mkdir -p "$S/legs"
+    [ "$leg" != none ] && [ -n "$sid" ] && echo "$leg" >> "$S/legs/$sid"
+  fi
+  exit 0
+fi
+
+printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$tool" "$arg" >> "$S/hook_log" 2>/dev/null
+
+# --- 1. hard rules ---
 case "$tool" in
   Bash)
     if [[ "$arg" =~ git[[:space:]]+push ]]; then
@@ -47,4 +78,44 @@ case "$tool" in
     fi
     ;;
 esac
+
+# --- 2. overseer cancel: only reads and the final report may proceed ---
+if [ -f "$S/cancel" ]; then
+  case "$tool" in
+    Read|Glob|Grep) ;;
+    Write|Edit|MultiEdit) [[ "$arg" =~ docs/(REPORT\.md|RUN_STATE)$ ]] || deny "overseer cancel: only docs/REPORT.md and docs/RUN_STATE may be written";;
+    *) deny "overseer cancel: the run is stopping";;
+  esac
+fi
+
+# --- 3. plan tier: read-only, except the plan, the ledgers and the state dir ---
+tier="$(cat "$S/tier" 2>/dev/null)"; tier="${tier//[$'\r\n ']/}"
+if [ "$tier" = plan ]; then
+  ro_re='^(git[[:space:]]+(status|log|diff|ls-files|rev-parse|show|branch([[:space:]]+--list)?|worktree[[:space:]]+list)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|tr|sort|uniq|cut|awk|sed[[:space:]]+-n|bash[[:space:]]+scripts/(gate|diffbase)\.sh|bash[[:space:]]+tests/|python3?[[:space:]]+scripts/(ledger|budget|brief|check_criteria)\.py)([[:space:]]|$)'
+  case "$tool" in
+    Read|Glob|Grep) ;;
+    Write|Edit|MultiEdit) [[ "$arg" =~ (^|/)(docs/plan\.md|docs/ledgers/|\.claude/state/) ]] || deny "plan tier: cannot write $arg";;
+    Bash)
+      if [[ "$arg" =~ \> ]] && ! [[ "$arg" =~ \>[[:space:]]*\.claude/state/ ]]; then deny "plan tier: no redirects"; fi
+      [[ "$arg" =~ [[:space:]]tee[[:space:]] ]] && deny "plan tier: no redirects"
+      while IFS= read -r seg; do
+        seg="${seg#"${seg%%[![:space:]]*}"}"; [ -z "$seg" ] && continue
+        [[ "$seg" =~ $ro_re ]] || deny "plan tier: read-only commands only ($seg)"
+      done < <(printf '%s\n' "$arg" | sed -E 's/(&&|\|\||;|\|)/\n/g')
+      ;;
+    *) deny "plan tier: $tool not allowed";;
+  esac
+fi
+
+# --- 4. lethal trifecta: one step never both reads untrusted content and sends data out ---
+if [ -f "$S/current_step.json" ]; then
+  stepinfo="$("$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id","nostep")); print(",".join(d.get("legs",[])))' "$S/current_step.json" 2>/dev/null)"
+  stepinfo="${stepinfo//$'\r'/}"; sid="${stepinfo%%$'\n'*}"; declared="${stepinfo#*$'\n'}"
+  leg="$(leg_of)"
+  if [ "$leg" != none ]; then
+    have=",$declared,$(tr '\n' ',' < "$S/legs/$sid" 2>/dev/null),"
+    other=untrusted_content; [ "$leg" = untrusted_content ] && other=outbound
+    [[ "$have" == *",$other,"* ]] && deny "trifecta: step $sid already used $other, so $leg is not allowed in the same step"
+  fi
+fi
 exit 0
