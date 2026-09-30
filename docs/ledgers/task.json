@@ -1,0 +1,21 @@
+{
+  "goal": "Add docs/GLOSSARY.md defining the terms Mission Brief, Task Ledger, Progress Ledger, RUN_STATE and overseer as used in this repo, each in two sentences",
+  "plan": [
+    {
+      "slug": "docs-glossary",
+      "goal": "Create docs/GLOSSARY.md defining Mission Brief, Task Ledger, Progress Ledger, RUN_STATE and overseer, each in two sentences, derived from repo docs and scripts",
+      "owns": [
+        "docs/GLOSSARY.md"
+      ],
+      "status": "merged",
+      "branch": "mission/add-docs-glossary--docs-glossary",
+      "commit": "af4fb21"
+    }
+  ],
+  "facts": [],
+  "assumptions": [],
+  "blocked": [],
+  "replan_count": 0,
+  "stall_count": 0,
+  "is_complete": false
+}

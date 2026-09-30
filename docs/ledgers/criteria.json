@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "kind": "file",
+      "status": "pass",
+      "detail": "exists: docs/GLOSSARY.md"
+    },
+    {
+      "kind": "file",
+      "status": "pass",
+      "detail": "exists: docs/GLOSSARY.md"
+    },
+    {
+      "kind": "test",
+      "status": "pass",
+      "detail": "exit 0"
+    }
+  ],
+  "passed": 3,
+  "failed": 0,
+  "deferred": 0
+}
