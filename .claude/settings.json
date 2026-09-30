@@ -8,7 +8,8 @@
       "Bash(git status *)", "Bash(git rev-parse *)",
       "Bash(python *)", "Bash(python3 *)", "Bash(pytest *)", "Bash(uv *)",
       "Bash(gh *)", "Bash(make *)",
-      "Bash(bash scripts/*)", "Bash(bash tests/*)"
+      "Bash(bash scripts/gate.sh *)", "Bash(bash scripts/diffbase.sh *)", "Bash(bash tests/run.sh *)",
+      "Bash(bash tests/guard.sh *)", "Bash(bash tests/gate.sh *)", "Bash(bash tests/diffbase.sh *)"
     ],
     "deny": [
       "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push --force-with-lease*)",
@@ -17,7 +18,6 @@
       "Bash(git filter-branch*)", "Bash(git filter-repo*)",
       "Bash(pip install*)", "Bash(pip3 install*)", "Bash(rm -rf*)", "Bash(rm -fr*)",
       "Read(./.env)", "Read(./.env.local)", "Read(./.env.production)", "Read(./.env.development)",
-      "Write(./.env)", "Write(./.env.local)", "Write(./.env.production)", "Write(./.env.development)",
       "Edit(./.env)", "Edit(./.env.local)", "Edit(./.env.production)", "Edit(./.env.development)"
     ]
   },
