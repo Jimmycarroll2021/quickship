@@ -88,7 +88,7 @@ eval_criterion() {
     test)
       cmd="$(jq -r '.cmd' <<<"$c")"; t="$(jq -r '.timeout_s // 300' <<<"$c")"
       echo "gate: criterion $id -> $cmd" >&2
-      timeout "$t" bash -c "$cmd" >"$log" 2>&1; rc=$?
+      timeout "$t" bash -c "$cmd" </dev/null >"$log" 2>&1; rc=$?
       if [ $rc -eq 0 ]; then c_result=PASS; c_detail="exit 0"
       elif [ $rc -eq 124 ]; then c_detail="timed out after ${t}s"; tail -n 40 "$log" >&2
       else c_detail="exit $rc"; tail -n 40 "$log" >&2; fi ;;
@@ -142,7 +142,7 @@ if [ -f "$BRIEF" ]; then
     else
       results+=("budget: PASS ($steps / $budget steps)")
       pending=0; cfail=0
-      while IFS= read -r c; do
+      while IFS= read -r -u 3 c; do
         eval_criterion "$c"
         id="$(jq -r '.id' <<<"$c")"; kind="$(jq -r '.kind' <<<"$c")"
         rows+=("| $(cell "$id") | $kind | $c_result | $(cell "$c_detail") |")
@@ -150,7 +150,7 @@ if [ -f "$BRIEF" ]; then
           FAIL) cfail=$((cfail+1)); failures+=("criterion $id failed: $c_detail") ;;
           PENDING_JUDGE) pending=$((pending+1)) ;;
         esac
-      done < <(yq -c '.success_criteria[]' "$BRIEF")
+      done 3< <(yq -c '.success_criteria[]' "$BRIEF")
       if [ ${#failures[@]} -gt 0 ]; then state=HALT
       elif [ "$pending" -gt 0 ]; then state=DONE_PARTIAL
       else state=DONE; fi
