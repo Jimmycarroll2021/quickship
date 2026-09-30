@@ -1,0 +1,21 @@
+{
+  "goal": "Add a README.md at the repo root that explains what quickship is, how a human writes BRIEF.yaml and runs scripts/run.sh, and where the report ends up",
+  "plan": [
+    {
+      "slug": "readme",
+      "goal": "Write README.md at the repo root explaining what quickship is, how to write BRIEF.yaml, run scripts/run.sh, and where docs/REPORT.md ends up",
+      "owns": [
+        "README.md"
+      ],
+      "status": "merged",
+      "branch": "mission/add-readme--readme",
+      "commit": "e1dbddd"
+    }
+  ],
+  "facts": [],
+  "assumptions": [],
+  "blocked": [],
+  "replan_count": 0,
+  "stall_count": 0,
+  "is_complete": false
+}

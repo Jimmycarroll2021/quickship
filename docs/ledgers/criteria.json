@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "kind": "file",
+      "status": "pass",
+      "detail": "exists: README.md"
+    },
+    {
+      "kind": "file",
+      "status": "pass",
+      "detail": "exists: README.md"
+    },
+    {
+      "kind": "file",
+      "status": "pass",
+      "detail": "exists: README.md"
+    },
+    {
+      "kind": "grep",
+      "status": "pass",
+      "detail": "matched: REPORT.md"
+    },
+    {
+      "kind": "test",
+      "status": "pass",
+      "detail": "exit 0"
+    },
+    {
+      "kind": "judge",
+      "status": "deferred",
+      "detail": "A newcomer reading README.md alone can start a mission without asking anyone a question"
+    }
+  ],
+  "passed": 5,
+  "failed": 0,
+  "deferred": 1
+}
