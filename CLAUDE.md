@@ -1,7 +1,7 @@
 # quickship — agent instruction contract
 
 ## What this is
-quickship is currently an empty repository: as of the scaffold commit it contains no README, manifest or application code, so its purpose cannot be inferred. **Owner: replace this paragraph with a one-paragraph description once code lands.** Until then, agents must not guess at product intent — ask, or work only on the task as literally stated.
+quickship is a Claude Code harness for unattended software delivery: a lead session plans, dispatches parallel workers into git worktrees, merges, reviews, gates, and opens a PR, with no human answering questions during the run. The repo carries its own guardrails (`.claude/settings.json` deny rules plus `scripts/hooks/guard.sh`) so the hard rules hold in cloud sessions and fresh clones where `~/.claude` settings do not exist. Requirements are in `tasks/prd-quickship.md`.
 
 ## Commands
 `scripts/gate.sh` is the single source of truth. It detects the stack from the repo root at run time:
@@ -17,7 +17,7 @@ Run everything with:
 bash scripts/gate.sh   # exit 0 = pass, 2 = fail (details on stderr)
 ```
 
-Verified at scaffold time: only the secrets scan runs, because no stack exists yet. **When the first manifest is added, run the gate, then replace this table with the exact commands that passed.**
+The gate also runs `bash tests/run.sh`, the repo's own acceptance tests for its hooks and scripts (no LLM calls). No application stack exists yet, so lint/test/build are skipped with a warning until a manifest is added. The gate resolves its root from the tree it is run in, so a worker must run it from inside its worktree.
 
 ## Definition of done
 A change is done only when all of these hold:
@@ -35,9 +35,15 @@ A change is done only when all of these hold:
 - Never push to `main`. Work on a feature branch.
 - When the work is done and the gate passes: open a PR and stop. Do not self-review or merge it; hand it back.
 
+These rules are enforced, not just stated: `.claude/settings.json` denies the matching tool calls, and `scripts/hooks/guard.sh` (PreToolUse; runs inside subagents too) denies them again by regex and logs every call to `.claude/state/hook_log`. A denied call is a blocked step: record it in `docs/decisions.md` and route around it. Never retry the same command.
+
 ## Subagents
-- `worker` (`.claude/agents/worker.md`): implements one bounded task and returns a summary and file paths.
+- `planner` (`.claude/agents/planner.md`): turns a goal into a file-disjoint task list in `docs/plan.md`.
+- `worker` (`.claude/agents/worker.md`): implements one bounded task and returns a summary and file paths. No web tools.
+- `researcher` (`.claude/agents/researcher.md`): answers one question from the web, writes only under `work/_untrusted/`. No shell, cannot push.
 - `reviewer` (`.claude/agents/reviewer.md`): read-only audit against the definition of done; returns PASS or a numbered FAIL list.
+
+A worker never fetches the web and a researcher never runs commands or pushes, so no single step can both read untrusted content and send data out (the lethal-trifecta rule). If a worker returns `NEEDS-RESEARCH`, dispatch a researcher as a separate step, then re-dispatch the worker with the file path.
 
 ## Orchestration
 For any goal touching more than 3 files:
@@ -52,4 +58,4 @@ For any goal touching more than 3 files:
 6. **Review loop.** Reviewer FAIL → fix and re-run reviewer and gate, max 3 cycles. Still failing → open the PR with `[needs-human]` in the title (and the `needs-human` label if it exists) and stop.
 7. **Clean up.** After merging: `git worktree remove .claude/worktrees/<task-slug>` and `git branch -d <session-branch>--<task-slug>`. Never push task branches.
 
-`.claude/worktrees/` is gitignored. Never `git add` it.
+`.claude/worktrees/`, `.claude/state/` and `work/_untrusted/` are gitignored. Never `git add` them.
