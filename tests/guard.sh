@@ -23,6 +23,13 @@ expect_exit "deny read: .env" 2 hook guard.sh "$(file_json Read ".env")"
 for f in ".env.example" "src/app.ts" "docs/plan.md" ".github/workflows/ci.yml" "Dockerfile"; do
   expect_exit "allow write: $f" 0 hook guard.sh "$(file_json Write "$f")"
 done
+# per-subcommand matching: rules see each subcommand of a compound line, with git -C/--git-dir/--work-tree normalised
+for cmd in "git push origin mission/x && gh pr create --base main --title t" "echo main && git push origin mission/x"            'git -C .claude/worktrees/x commit -m \"x\"'; do
+  expect_exit "allow compound: $cmd" 0 hook guard.sh "$(bash_json "$cmd")"
+done
+for cmd in "cd .claude/worktrees/x && git push origin main" "git -C .claude/worktrees/x push --force origin feat/y"            "git -C /tmp/x reset --hard HEAD~1" "ls; git push origin HEAD:main" "true | pip install x"            "git --git-dir=/tmp/x/.git push origin main" "git -C a --work-tree b push -f origin feat/y"; do
+  expect_exit "deny compound: $cmd" 2 hook guard.sh "$(bash_json "$cmd")"
+done
 expect_exit "garbage stdin fails closed" 2 hook guard.sh "not json"
 expect_exit "empty stdin fails closed" 2 hook guard.sh ""
 expect_exit "missing tool_input fails closed" 2 hook guard.sh '{"hook_event_name":"PreToolUse","tool_name":"Bash"}'
@@ -75,6 +82,12 @@ expect_exit "trifecta: PostToolUse read _untrusted records leg" 0 hook guard.sh 
 expect_exit "trifecta: gh pr create after reading _untrusted denied" 2 hook guard.sh "$(bash_json "gh pr create --title x")"
 printf '{"id":"s012","slug":"x","legs":["untrusted_content"]}' > "$S/current_step.json"
 expect_exit "trifecta: declared leg counts" 2 hook guard.sh "$(bash_json "git push origin mission/x")"
+printf '{"id":"s013","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "trifecta: PostToolUse cd && push records outbound" 0 hook guard.sh "$(post_json Bash '"command":"cd .claude/worktrees/x && git push origin mission/x"')"
+expect_contains "trifecta: cd && push is outbound" "outbound" "$(cat "$S/legs/s013" 2>/dev/null)"
+printf '{"id":"s014","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "trifecta: PostToolUse git -C push records outbound" 0 hook guard.sh "$(post_json Bash '"command":"git -C .claude/worktrees/x push origin mission/x"')"
+expect_contains "trifecta: git -C push is outbound" "outbound" "$(cat "$S/legs/s014" 2>/dev/null)"
 rm -f "$S/current_step.json"
 expect_exit "trifecta: no current step, push allowed" 0 hook guard.sh "$(bash_json "git push origin mission/x")"
 # --- overseer role: exempt from cancel/tier/trifecta, never from hard rules ---

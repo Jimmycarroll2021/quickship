@@ -15,12 +15,26 @@ d = json.load(sys.stdin); e = d.get("hook_event_name", "PreToolUse"); t = d["too
 if t == "Bash": v = i["command"]
 elif t in ("Write", "Edit", "MultiEdit", "Read"): v = i["file_path"]
 else: v = i.get("url") or i.get("query") or ""
-print(e); print(t); print(str(v).replace("\n", " "))
+print(e); print(t); print(str(v))
 ' 2>/dev/null)" || { echo "guard: malformed hook input, denied" >&2; exit 2; }
 parsed="${parsed//$'\r'/}"   # python on Windows emits CRLF
 event="${parsed%%$'\n'*}"; rest="${parsed#*$'\n'}"
-tool="${rest%%$'\n'*}"; arg="${rest#*$'\n'}"
+tool="${rest%%$'\n'*}"; raw="${rest#*$'\n'}"; arg="${raw//$'\n'/ }"   # raw keeps newlines for the split
 S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
+# Subcommands of a Bash line, one per element of SEGS: split on && || ; | |& and newlines (as Claude Code matches
+# permission rules), leading space trimmed, and git's -C <dir> / -c <k=v> / --git-dir / --work-tree options dropped
+# so `git -C wt push` is matched as `git push`.
+SEGS=()
+split_subcmds() {
+  local seg q='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
+  local opt_re="(^|[[:space:]])git[[:space:]]+(-C[[:space:]]+$q|-c[[:space:]]+$q|--(git-dir|work-tree)(=|[[:space:]]+)$q)[[:space:]]*"
+  while IFS= read -r seg; do
+    seg="${seg#"${seg%%[![:space:]]*}"}"; [ -z "$seg" ] && continue
+    while [[ "$seg" =~ $opt_re ]]; do seg="${seg/"${BASH_REMATCH[0]}"/${BASH_REMATCH[1]}git }"; done
+    SEGS+=("$seg")
+  done < <(printf '%s\n' "$raw" | sed -E 's/(&&|\|\||\|&|;|\|)/\n/g')
+}
+[ "$tool" = Bash ] && split_subcmds
 deny() { echo "guard: denied ($1): $tool $arg" >&2; exit 2; }
 is_env_file() { # basename is .env or .env.<x>, except *.example|sample|template
   local b="${1##*/}"
@@ -30,12 +44,14 @@ leg_of() { # untrusted_content | outbound | none, for this tool call
   case "$tool" in
     WebFetch|WebSearch) echo untrusted_content;;
     Read) [[ "$arg" =~ (^|/)work/_untrusted/ ]] && echo untrusted_content || echo none;;
-    Bash)
-      if [[ "$arg" =~ git[[:space:]]+push|gh[[:space:]]+(pr|issue|release)[[:space:]]+(create|comment|edit|merge|close)|npm[[:space:]]+publish ]]; then echo outbound
-      elif [[ "$arg" =~ (^|[[:space:]])curl[[:space:]] ]] && [[ "$arg" =~ -X[[:space:]]*(POST|PUT|PATCH|DELETE)|--data|[[:space:]]-d[[:space:]]|--upload-file|[[:space:]]-T[[:space:]] ]]; then echo outbound
-      elif [[ "$arg" =~ (^|[[:space:]])(curl|wget)[[:space:]] ]]; then echo untrusted_content
-      elif [[ "$arg" =~ work/_untrusted/ ]]; then echo untrusted_content
-      else echo none; fi;;
+    Bash) # per subcommand; outbound in any subcommand wins over untrusted_content
+      local seg l=none
+      for seg in "${SEGS[@]}"; do
+        if [[ "$seg" =~ git[[:space:]]+push|gh[[:space:]]+(pr|issue|release)[[:space:]]+(create|comment|edit|merge|close)|npm[[:space:]]+publish ]]; then echo outbound; return
+        elif [[ "$seg" =~ (^|[[:space:]])curl[[:space:]] ]] && [[ "$seg" =~ -X[[:space:]]*(POST|PUT|PATCH|DELETE)|--data|[[:space:]]-d[[:space:]]|--upload-file|[[:space:]]-T[[:space:]] ]]; then echo outbound; return
+        elif [[ "$seg" =~ (^|[[:space:]])(curl|wget)[[:space:]] || "$seg" =~ work/_untrusted/ ]]; then l=untrusted_content; fi
+      done
+      echo "$l";;
     *) echo none;;
   esac
 }
@@ -54,17 +70,19 @@ printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$tool" "$arg" >> "$S/hook_log" 2>/de
 
 # --- 1. hard rules ---
 case "$tool" in
-  Bash)
-    if [[ "$arg" =~ git[[:space:]]+push ]]; then
-      [[ "$arg" =~ [[:space:]](--force|--force-with-lease|-f)([[:space:]]|$) || "$arg" =~ [[:space:]]\+[^[:space:]] ]] && deny "force push"
-      [[ "$arg" =~ ([[:space:]]|:)(main|master)([[:space:]]|$) ]] && deny "push to main"
-    fi
-    [[ "$arg" =~ git[[:space:]]+reset[[:space:]]+--hard ]] && deny "git reset --hard"
-    [[ "$arg" =~ git[[:space:]]+branch[[:space:]]+(-D|--delete[[:space:]]+--force) ]] && deny "git branch -D"
-    [[ "$arg" =~ git[[:space:]]+checkout[[:space:]]+--[[:space:]] ]] && deny "git checkout -- discards work"
-    [[ "$arg" =~ git[[:space:]]+(filter-branch|filter-repo) ]] && deny "history rewrite"
-    [[ "$arg" =~ (^|[[:space:]])pip3?[[:space:]]+install ]] && deny "pip install (use uv add)"
-    [[ "$arg" =~ (^|[[:space:]])rm[[:space:]]+(-[A-Za-z]*r[A-Za-z]*f|-[A-Za-z]*f[A-Za-z]*r|-r[[:space:]]+-f|-f[[:space:]]+-r) ]] && deny "rm -rf"
+  Bash) # each rule sees one subcommand, so a token in another subcommand can neither trip nor mask it
+    for seg in "${SEGS[@]}"; do
+      if [[ "$seg" =~ git[[:space:]]+push ]]; then
+        [[ "$seg" =~ [[:space:]](--force|--force-with-lease|-f)([[:space:]]|$) || "$seg" =~ [[:space:]]\+[^[:space:]] ]] && deny "force push"
+        [[ "$seg" =~ ([[:space:]]|:)(main|master)([[:space:]]|$) ]] && deny "push to main"
+      fi
+      [[ "$seg" =~ git[[:space:]]+reset[[:space:]]+--hard ]] && deny "git reset --hard"
+      [[ "$seg" =~ git[[:space:]]+branch[[:space:]]+(-D|--delete[[:space:]]+--force) ]] && deny "git branch -D"
+      [[ "$seg" =~ git[[:space:]]+checkout[[:space:]]+--[[:space:]] ]] && deny "git checkout -- discards work"
+      [[ "$seg" =~ git[[:space:]]+(filter-branch|filter-repo) ]] && deny "history rewrite"
+      [[ "$seg" =~ (^|[[:space:]])pip3?[[:space:]]+install ]] && deny "pip install (use uv add)"
+      [[ "$seg" =~ (^|[[:space:]])rm[[:space:]]+(-[A-Za-z]*r[A-Za-z]*f|-[A-Za-z]*f[A-Za-z]*r|-r[[:space:]]+-f|-f[[:space:]]+-r) ]] && deny "rm -rf"
+    done
     for tok in $arg; do tok="${tok#[\"\']}"; tok="${tok%[\"\']}"; is_env_file "$tok" && deny ".env access"; done
     ;;
   Write|Edit|MultiEdit|Read)
@@ -101,10 +119,7 @@ if [ "$tier" = plan ]; then
     Bash)
       if [[ "$arg" =~ \> ]] && ! [[ "$arg" =~ \>[[:space:]]*\.claude/state/ ]]; then deny "plan tier: no redirects"; fi
       [[ "$arg" =~ [[:space:]]tee[[:space:]] ]] && deny "plan tier: no redirects"
-      while IFS= read -r seg; do
-        seg="${seg#"${seg%%[![:space:]]*}"}"; [ -z "$seg" ] && continue
-        [[ "$seg" =~ $ro_re ]] || deny "plan tier: read-only commands only ($seg)"
-      done < <(printf '%s\n' "$arg" | sed -E 's/(&&|\|\||;|\|)/\n/g')
+      for seg in "${SEGS[@]}"; do [[ "$seg" =~ $ro_re ]] || deny "plan tier: read-only commands only ($seg)"; done
       ;;
     *) deny "plan tier: $tool not allowed";;
   esac
