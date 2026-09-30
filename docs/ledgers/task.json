@@ -1,0 +1,21 @@
+{
+  "goal": "Add docs/GLOSSARY.md defining the terms Mission Brief, Task Ledger, Progress Ledger, RUN_STATE and overseer as used in this repo, each in two sentences",
+  "plan": [
+    {
+      "slug": "add-glossary",
+      "goal": "Add docs/GLOSSARY.md defining the terms Mission Brief, Task Ledger, Progress Ledger, RUN_STATE and overseer as used in this repo, each in two sentences",
+      "owns": [
+        "docs/GLOSSARY.md"
+      ],
+      "status": "merged",
+      "branch": "claude/start-brief-mission-3lmpdv--add-glossary",
+      "commit": "bacb793"
+    }
+  ],
+  "facts": [],
+  "assumptions": [],
+  "blocked": [],
+  "replan_count": 0,
+  "stall_count": 0,
+  "is_complete": false
+}
