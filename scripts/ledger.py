@@ -18,6 +18,7 @@ from pathlib import Path
 
 STATUSES = ("pending", "dispatched", "merged", "failed", "skipped")
 EVENTS = ("dispatched", "merged", "failed", "timeout", "assumption", "blocked", "replan", "stall", "criteria", "note")
+TIERS = ("plan", "act")
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 HASH_EXCLUDED = {"replan_count", "stall_count", "ts"}
 DEFAULT_REPLAN_LIMIT = 5
@@ -52,6 +53,10 @@ def state_dir() -> Path:
 
 def task_path() -> Path:
     return ledger_dir() / "task.json"
+
+
+def tier_path() -> Path:
+    return state_dir() / "tier"
 
 
 def progress_path() -> Path:
@@ -265,6 +270,21 @@ def cmd_step_start(a) -> int:
     return 0
 
 
+def cmd_tier(a) -> int:
+    p = tier_path()
+    if a.value is None:
+        if p.is_file():
+            print(p.read_text(encoding="utf-8").strip() or "act")
+        else:
+            print("act")
+        return 0
+    if a.value not in TIERS:
+        raise LedgerError(f"tier must be one of {'|'.join(TIERS)}: {a.value}")
+    write_atomic(p, a.value + "\n")
+    print(a.value)
+    return 0
+
+
 def cmd_facts_invalidate(a) -> int:
     task = load_task()
     n = 0
@@ -304,6 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("step-start"); s.add_argument("slug"); s.add_argument("--legs", required=True)
     s.set_defaults(fn=cmd_step_start)
     s = sub.add_parser("facts-invalidate"); s.add_argument("substring"); s.set_defaults(fn=cmd_facts_invalidate)
+    s = sub.add_parser("tier"); s.add_argument("value", nargs="?", default=None); s.set_defaults(fn=cmd_tier)
     return p
 
 
