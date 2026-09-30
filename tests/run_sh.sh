@@ -52,4 +52,19 @@ expect_exit "missing brief: exit 2" 2 run "$d2"
 d3="$(mk)"
 expect_exit "stub writing terminal state: run returns 0" 0 bash -c "cd '$d3' && PATH='$d3/bin:$PATH' STUB_LOG='$d3/stub.log' STUB_RUN_STATE='{\"state\":\"DONE\",\"reason\":\"ok\",\"at\":\"x\"}' QS_SLEEP=0 QS_OVERSEER=0 bash scripts/run.sh"
 expect_contains "run reports the terminal state" "DONE" "$OUT"
+
+# --- killed mid-run: no JSON result, but the budget hook has recorded the transcript path, whose basename is the
+# session id; run.sh must save that id so the next start resumes the same session instead of a fresh one ---
+d4="$(mk)"; cat > "$d4/bin/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$STUB_LOG"
+mkdir -p .claude/state; printf '%s' 'C:\Users\x\.claude\projects\p\abcd-1234.jsonl' > .claude/state/transcript_path
+exit 137
+EOF
+run "$d4" >/dev/null 2>&1
+expect_contains "killed run: session id derived from transcript path" "abcd-1234" "$(cat "$d4/.claude/state/session_id" 2>/dev/null)"
+cp "$d3/bin/claude" "$d4/bin/claude"   # the lead comes back healthy
+: > "$d4/stub.log"; run "$d4" >/dev/null 2>&1
+expect_contains "killed run: next start resumes that session" "--resume" "$(cat "$d4/stub.log")"
+expect_contains "killed run: resume uses the derived id" "abcd-1234" "$(cat "$d4/stub.log")"
 finish

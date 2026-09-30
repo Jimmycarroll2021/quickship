@@ -58,6 +58,10 @@ fi
 sid="$("$PY" -c 'import json,sys
 try: print(json.load(open(sys.argv[1])).get("session_id",""))
 except Exception: print("")' "$S/last_run.json")"; sid="${sid//$'\r'/}"
+if [ -z "$sid" ] && [ -s "$S/transcript_path" ]; then
+  # killed mid-run: no JSON result, but the budget hook recorded the transcript path, whose basename is the session id
+  tp="$(tr -d '\r\n' < "$S/transcript_path")"; tp="${tp//\\//}"; tp="${tp##*/}"; sid="${tp%.jsonl}"
+fi
 [ -n "$sid" ] && printf '%s\n' "$sid" > "$S/session_id"
 
 echo "run: lead exit=$rc state=$(cat docs/RUN_STATE 2>/dev/null || echo none)"
