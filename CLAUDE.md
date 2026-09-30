@@ -1,7 +1,26 @@
 # quickship — agent instruction contract
 
 ## What this is
-quickship is currently an empty repository: as of the scaffold commit it contains no README, manifest or application code, so its purpose cannot be inferred. **Owner: replace this paragraph with a one-paragraph description once code lands.** Until then, agents must not guess at product intent — ask, or work only on the task as literally stated.
+quickship is a Claude Code reference implementation of `mission/SPEC.md`: a mission brief runner. A YAML brief (`mission/BRIEF.yaml`) declares success criteria and budgets, append-only ledgers record progress and assumptions, and the gate evaluates the criteria and writes `mission/REPORT.md` with a termination state of DONE | DONE_PARTIAL | SAFE_STOP | HALT.
+
+## Ambiguity policy
+Agents never ask. Pick a sensible default, append an entry `{"type":"ASSUMPTION","ts":...,"step":...,"summary":<question>,"detail":<default chosen + why>}` to `entries` in `mission/ledgers/task.json`, and continue.
+
+## Mission runner
+```bash
+bash scripts/gate.sh                                  # checks + mission evaluation; writes mission/REPORT.md
+bash scripts/validate_brief.sh [brief] [schema]       # defaults: mission/BRIEF.yaml, mission/BRIEF.schema.yaml
+```
+
+Line 1 of `mission/REPORT.md` is the state:
+- `DONE`: every criterion passes. Exit 0.
+- `DONE_PARTIAL`: no failures, at least one judge criterion has no verdict. Exit 0.
+- `SAFE_STOP`: STEP lines exceed `budgets.steps`. Exit 0.
+- `HALT`: invalid brief, failed check or failed criterion. Exit 2.
+
+- On DONE_PARTIAL the lead runs `reviewer` to write `mission/.judge/<id>.verdict` (first line PASS or FAIL).
+- Agents append one STEP line per step to `mission/ledgers/progress.jsonl`.
+- `mission/REPORT.md` and `mission/.judge/` are generated and gitignored. Never commit them.
 
 ## Commands
 `scripts/gate.sh` is the single source of truth. It detects the stack from the repo root at run time:
@@ -16,6 +35,8 @@ Run everything with:
 ```bash
 bash scripts/gate.sh   # exit 0 = pass, 2 = fail (details on stderr)
 ```
+
+`scripts/validate_brief.sh` validates the mission brief against its schema (see Mission runner); the gate calls it when `mission/BRIEF.yaml` exists.
 
 Verified at scaffold time: only the secrets scan runs, because no stack exists yet. **When the first manifest is added, run the gate, then replace this table with the exact commands that passed.**
 
