@@ -90,6 +90,15 @@ expect_exit "trifecta: PostToolUse git -C push records outbound" 0 hook guard.sh
 expect_contains "trifecta: git -C push is outbound" "outbound" "$(cat "$S/legs/s014" 2>/dev/null)"
 rm -f "$S/current_step.json"
 expect_exit "trifecta: no current step, push allowed" 0 hook guard.sh "$(bash_json "git push origin mission/x")"
+# --- cd before git: Claude Code's permission layer auto-denies it in a headless run, so the guard denies it first
+# with an actionable reason (use git -C). A cd before a non-git command, and git -C itself, stay allowed. ---
+for cmd in "cd .claude/worktrees/x && git add -A && git commit -m x" "cd /tmp/x && git status --short" "cd x; git log -1"; do
+  expect_exit "cd-then-git denied: $cmd" 2 hook guard.sh "$(bash_json "$cmd")"
+  expect_contains "cd-then-git reason names git -C: $cmd" "git -C" "$OUT"
+done
+for cmd in "cd .claude/worktrees/x && bash scripts/gate.sh" "git -C .claude/worktrees/x add -A && git -C .claude/worktrees/x commit -m x" "cd x && python scripts/ledger.py tier act"; do
+  expect_exit "cd without git allowed: $cmd" 0 hook guard.sh "$(bash_json "$cmd")"
+done
 # --- overseer role: exempt from cancel/tier/trifecta, never from hard rules ---
 touch "$S/cancel"
 expect_exit "overseer role: may write its note under cancel" 0 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/guard.sh" <<< "$(file_json Write "docs/overseer.md")"

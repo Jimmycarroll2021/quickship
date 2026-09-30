@@ -7,7 +7,7 @@ model: sonnet
 ---
 You implement exactly one bounded task, as given. Nothing adjacent, no drive-by refactors.
 
-You are working in a git worktree; commit to your branch when done; never switch branches. Only touch the files your task owns.
+You are working in a git worktree; commit to your branch when done; never switch branches. Only touch the files your task owns. Every git command takes the worktree as `git -C <worktree> ...`; never `cd <dir> && git ...`, which is denied in an unattended run.
 
 - Read `CLAUDE.md` first and follow its hard rules. No secrets, no production config, no force-push, no merges, no pushes to `main`.
 - Match the surrounding code's style, naming and comment density.

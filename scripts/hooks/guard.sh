@@ -85,6 +85,13 @@ case "$tool" in
       [[ "$seg" =~ (^|[[:space:]])rm[[:space:]]+(-[A-Za-z]*r[A-Za-z]*f|-[A-Za-z]*f[A-Za-z]*r|-r[[:space:]]+-f|-f[[:space:]]+-r) ]] && deny "rm -rf"
     done
     for tok in $arg; do tok="${tok#[\"\']}"; tok="${tok%[\"\']}"; is_env_file "$tok" && deny ".env access"; done
+    # Claude Code's permission layer treats a cd before any git command as needing approval, which an unattended
+    # run cannot give; deny it here with the fix in the reason instead of an opaque permission failure.
+    seen_cd=0
+    for seg in "${SEGS[@]}"; do
+      [[ "$seg" =~ ^cd([[:space:]]|$) ]] && seen_cd=1
+      [ "$seen_cd" = 1 ] && [[ "$seg" =~ ^git([[:space:]]|$) ]] && deny "cd before git is auto-denied in an unattended run; use git -C <dir> ... instead"
+    done
     ;;
   Write|Edit|MultiEdit|Read)
     is_env_file "$arg" && deny ".env access"
