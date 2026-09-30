@@ -1,0 +1,18 @@
+{
+  "_header": {
+    "purpose": "Append-only ledger of assumptions, decisions and blockers. JSON has no comments, so this _header object stands in for a header comment.",
+    "mission": "Path of the brief this ledger belongs to.",
+    "started_at": "ISO-8601 UTC timestamp of the first step, or null before the mission starts.",
+    "entries": "Array of entries. Agents append; they never edit or delete.",
+    "entry": {
+      "type": "ASSUMPTION | DECISION | BLOCKER",
+      "ts": "ISO-8601 UTC timestamp",
+      "step": "integer step number the entry belongs to",
+      "summary": "string; for ASSUMPTION this is the question",
+      "detail": "string; for ASSUMPTION this is the default chosen and why"
+    }
+  },
+  "mission": "mission/BRIEF.yaml",
+  "started_at": null,
+  "entries": []
+}
