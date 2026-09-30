@@ -1,0 +1,20 @@
+version: 1
+goal: add a CHANGELOG.md
+success_criteria:
+  - id: changelog-exists
+    kind: file
+    path: CHANGELOG.md
+deliverables:
+  - CHANGELOG.md
+budgets:
+  steps: 20
+  wall_clock: 30m
+permissions:
+  write: ["CHANGELOG.md", "mission/**"]
+  network: false
+  push: feature_branch
+ambiguity_policy: assume_and_log
+reporting:
+  estimate_only:
+    tokens: null
+    cost_usd: null
