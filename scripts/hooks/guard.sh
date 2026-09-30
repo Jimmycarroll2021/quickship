@@ -79,6 +79,9 @@ case "$tool" in
     ;;
 esac
 
+# Clauses 2-4 are mission-run policy for the lead and its subagents; the overseer session (QS_ROLE=overseer) is exempt.
+[ "${QS_ROLE:-lead}" = overseer ] && exit 0
+
 # --- 2. overseer cancel: only reads and the final report may proceed ---
 if [ -f "$S/cancel" ]; then
   case "$tool" in

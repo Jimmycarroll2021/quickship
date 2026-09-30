@@ -9,7 +9,9 @@
       "Bash(python *)", "Bash(python3 *)", "Bash(pytest *)", "Bash(uv *)",
       "Bash(gh *)", "Bash(make *)",
       "Bash(bash scripts/gate.sh *)", "Bash(bash scripts/diffbase.sh *)", "Bash(bash tests/run.sh *)",
-      "Bash(bash tests/guard.sh *)", "Bash(bash tests/gate.sh *)", "Bash(bash tests/diffbase.sh *)"
+      "Bash(bash tests/guard.sh *)", "Bash(bash tests/gate.sh *)", "Bash(bash tests/diffbase.sh *)",
+      "Bash(bash scripts/check_criteria.sh *)", "Bash(cat *)", "Bash(ls *)", "Bash(echo *)", "Bash(date *)",
+      "Bash(mkdir *)", "Bash(rm -f .claude/state/force_replan)", "Bash(rm -f .claude/state/cancel)", "Bash(touch *)"
     ],
     "deny": [
       "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push --force-with-lease*)",
@@ -25,26 +27,58 @@
     "sessionUrl": true
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact|resume",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/anchor.sh", "timeout": 30 }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|Read",
+        "matcher": "Bash|Write|Edit|MultiEdit|Read|WebFetch|WebSearch",
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/guard.sh",
-            "timeout": 10
-          }
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/guard.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/idem.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/budget.sh", "timeout": 20 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read|WebFetch|WebSearch",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/guard.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/idem.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/budget.sh", "timeout": 20 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/gate.sh",
-            "timeout": 900
-          }
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/stop.sh", "timeout": 900 }
         ]
       }
     ]

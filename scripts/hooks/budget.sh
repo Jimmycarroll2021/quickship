@@ -4,6 +4,7 @@
 # PreToolUse: once any budget is exhausted, allow only reads and the final REPORT.md / RUN_STATE writes.
 # Fails closed: malformed input -> exit 2.
 set -u
+[ "${QS_ROLE:-lead}" = overseer ] && exit 0   # overseer tool calls are neither gated nor counted as steps
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
 S="$ROOT/.claude/state"
 [ -f "$S/brief.json" ] || exit 0   # runs on every tool call: leave fast when no run is active

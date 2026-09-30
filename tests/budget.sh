@@ -80,4 +80,9 @@ write_brief 1000000 100 60 1000
 "$QS_PYTHON" -c 'import datetime as d; print((d.datetime.now(d.timezone.utc)-d.timedelta(minutes=90)).strftime("%Y-%m-%dT%H:%M:%SZ"))' | tr -d '\r' > "$S/started_at"
 out="$(budget --exhausted-only)"; out="${out//$'\r'/}"
 [ "$out" = "wall_clock_min" ] && ok "90 min elapsed vs 60 exhausts wall_clock_min" || bad "wall_clock_min exhausted (got '$out')"
+# --- overseer role: its tool calls are neither gated nor counted ---
+write_brief 1000000 100 1000 10; echo 99 > "$S/steps"
+expect_exit "overseer role: exhausted Bash still allowed" 0 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/budget.sh" <<< "$(pre_bash "tail -n 20 docs/ledgers/progress.jsonl")"
+QS_ROLE=overseer bash "$ROOT/scripts/hooks/budget.sh" <<< '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}' >/dev/null 2>&1
+[ "$(tr -dc '0-9' < "$S/steps")" = "99" ] && ok "overseer role: steps not counted" || bad "overseer role: steps=$(cat "$S/steps")"
 finish

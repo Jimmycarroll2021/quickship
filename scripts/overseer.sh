@@ -61,7 +61,7 @@ do_tick() {
   local prompt result exit_code ts is_error
   prompt="$(cat "$ROOT/.claude/agents/overseer.md")"
 
-  result="$(claude -p "$prompt" \
+  result="$(QS_ROLE=overseer claude -p "$prompt" \
     --max-turns 8 \
     --permission-mode acceptEdits \
     --permission-prompts none \

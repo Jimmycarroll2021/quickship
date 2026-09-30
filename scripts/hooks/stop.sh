@@ -4,6 +4,8 @@
 # the 3rd stop attempt so an unattended run can never hang open. RUN_STATE HALT skips the gate entirely.
 # Input: hook JSON on stdin (fails closed: malformed -> exit 2). Exit 0 = allow stop, exit 2 = block.
 set -u
+# The overseer runs its own claude -p session in this repo; it must never block or decide the mission state.
+[ "${QS_ROLE:-lead}" = overseer ] && exit 0
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
 in="$(cat)"
 printf '%s' "$in" | "$PY" -c 'import json, sys; json.load(sys.stdin)' >/dev/null 2>&1 \

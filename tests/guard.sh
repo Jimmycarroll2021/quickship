@@ -77,4 +77,9 @@ printf '{"id":"s012","slug":"x","legs":["untrusted_content"]}' > "$S/current_ste
 expect_exit "trifecta: declared leg counts" 2 hook guard.sh "$(bash_json "git push origin mission/x")"
 rm -f "$S/current_step.json"
 expect_exit "trifecta: no current step, push allowed" 0 hook guard.sh "$(bash_json "git push origin mission/x")"
+# --- overseer role: exempt from cancel/tier/trifecta, never from hard rules ---
+touch "$S/cancel"
+expect_exit "overseer role: may write its note under cancel" 0 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/guard.sh" <<< "$(file_json Write "docs/overseer.md")"
+expect_exit "overseer role: hard rules still apply" 2 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/guard.sh" <<< "$(bash_json "git push --force origin main")"
+rm -f "$S/cancel"
 finish

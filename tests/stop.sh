@@ -49,4 +49,9 @@ r5="$(tmpdir)"; mk "$r5"
 expect_exit "malformed stdin fails closed" 2 run_stop "$r5" "not json"
 expect_exit "empty stdin fails closed" 2 run_stop "$r5" ""
 
+# --- overseer role: the overseer's own session shares the repo and must never block or write RUN_STATE ---
+r5="$(tmpdir)"; mk "$r5"; mkdir -p "$r5/.claude/state"; printf '{}' > "$r5/.claude/state/brief.json"
+expect_exit "overseer role: stop never blocks" 0 bash -c "cd '$r5' && CLAUDE_PROJECT_DIR='$r5' QS_ROLE=overseer bash '$ROOT/scripts/hooks/stop.sh' <<<'$stop_json'"
+[ -z "$(attempts "$r5")" ] && ok "overseer role: stop_attempts untouched" || bad "overseer role: stop_attempts=$(attempts "$r5")"
+[ ! -f "$r5/docs/RUN_STATE" ] && ok "overseer role: no RUN_STATE written" || bad "overseer role: RUN_STATE was written"
 finish

@@ -14,6 +14,7 @@ cat > "$STUB_DIR/claude" <<'STUB'
 {
   echo "CALL_START"
   printf '%s\n' "$@"
+  echo "ENV QS_ROLE=${QS_ROLE:-}"
   echo "CALL_END"
 } >> "$CLAUDE_STUB_ARGV_FILE"
 
@@ -86,6 +87,7 @@ case "$ALLOWED_TOOLS_LINE" in
 esac
 PROMPT_LINE="$(grep 'force_replan' "$ARGV_FILE" | head -n 1 || true)"
 expect_contains "prompt argument contains force_replan" "force_replan" "$PROMPT_LINE"
+expect_contains "overseer session carries QS_ROLE=overseer (hooks exempt it)" "ENV QS_ROLE=overseer" "$ARGV"
 [ -f "$PROJECT/.claude/state/overseer_last.json" ] && ok "overseer_last.json written" || bad "overseer_last.json written"
 LOG_LINES="$(wc -l < "$PROJECT/.claude/state/overseer.log" 2>/dev/null || echo 0)"
 [ "$LOG_LINES" = "1" ] && ok "overseer.log has one line" || bad "overseer.log has one line (got $LOG_LINES)"
