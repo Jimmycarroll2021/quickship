@@ -17,7 +17,7 @@ Run everything with:
 bash scripts/gate.sh   # exit 0 = pass, 2 = fail (details on stderr)
 ```
 
-The gate also runs `bash tests/run.sh`, the repo's own acceptance tests for its hooks and scripts (no LLM calls). Headless note: in a `claude -p` run on a folder that was never trusted interactively, Claude Code ignores the `permissions.allow` rules in `.claude/settings.json` (hooks and `deny` rules still apply), so a headless launcher must pass the allow list with `--allowedTools`. No application stack exists yet, so lint/test/build are skipped with a warning until a manifest is added. The gate resolves its root from the tree it is run in, so a worker must run it from inside its worktree.
+The gate also runs `bash tests/run.sh`, the repo's own acceptance tests for its hooks and scripts (no LLM calls). Headless note: in a `claude -p` run on a folder that was never trusted interactively, Claude Code ignores the `permissions.allow` rules in `.claude/settings.json` (hooks and `deny` rules still apply), so a headless launcher must pass the allow list with `--allowedTools`. No application stack exists yet, so lint/test/build are skipped with a warning until a manifest is added. The gate resolves its root from the tree it is run in, so a worker must run it from inside its worktree. Cloud note: a `claude --cloud` session clones the pushed branch (commit `BRIEF.yaml` first), assigns its own `claude/*` branch, which then serves as the session branch, and has no `gh`; a PR opened through the GitHub tool is not covered by the idempotency hook, so check for an existing PR before opening one.
 
 ## Definition of done
 A change is done only when all of these hold:
