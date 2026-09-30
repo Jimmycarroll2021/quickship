@@ -4,7 +4,7 @@
 The Mission Brief is the human-written `BRIEF.yaml` (see `BRIEF.example.yaml`) holding the goal, deliverables, success criteria, budgets and permissions for a run. `python3 scripts/brief.py validate` checks it and writes `.claude/state/brief.json`, which the lead re-reads every turn.
 
 ## Task Ledger
-The Task Ledger is `docs/ledgers/task.json`, managed by `scripts/ledger.py`, which records each task's slug and status (`pending`, `dispatched`, `merged`, `failed`) plus replan and stall counters. The lead loads it on resume to decide which tasks are done and which worktrees to reuse.
+The Task Ledger is `docs/ledgers/task.json`, managed by `scripts/ledger.py`, which records each task's slug and status (`pending`, `dispatched`, `merged`, `failed`, `skipped`) plus replan and stall counters. The lead loads it on resume to decide which tasks are done and which worktrees to reuse.
 
 ## Progress Ledger
 The Progress Ledger is the append-only `docs/ledgers/progress.jsonl`, one JSON event per line (such as dispatched, merged, failed, assumption, blocked or replan) written by `scripts/ledger.py append`. The lead and the overseer read it to track tokens, cost and stalls.
