@@ -1,0 +1,1 @@
+{"type":"HEADER","fields":{"note":"Append-only, one JSON object per line. Consumers skip HEADER records. Steps used = number of STEP lines; blocked steps = STEP lines with status blocked.","type":"HEADER | STEP","STEP.ts":"ISO-8601 UTC timestamp","STEP.step":"integer step number","STEP.action":"string, what was done","STEP.status":"ok | blocked | failed","STEP.detail":"string"}}
