@@ -99,6 +99,7 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 - `replan` increments `replan_count`, resets `stall_count` to 0, writes a `replan` progress line; exit 3 if the new `replan_count` exceeds `budgets.replan_limit` from brief.json.
 - `step-start <slug> --legs a,b` writes `$S/current_step.json` with the next step id; exit 2 if legs contain both `untrusted_content` and `outbound`.
 - `facts-invalidate "<substring>"` marks matching facts `valid: false`.
+- `tier [plan|act]` sets or prints `$S/tier` (the lead must never write it with a shell redirect: Claude Code protects `.claude/` paths).
 
 ## Budgets
 

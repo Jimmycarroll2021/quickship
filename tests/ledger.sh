@@ -122,6 +122,26 @@ open(p, 'w', encoding='utf-8', newline='\n').write(json.dumps(d))
 expect_exit "facts-invalidate" 0 led facts-invalidate "v2 endpoints"
 expect_contains "facts-invalidate flips only matches" "False True" "$(jget "$L/task.json" "d['facts'][0]['valid'], d['facts'][1]['valid']")"
 
+# --- tier ---
+rm -f "$S/tier"
+expect_exit "tier with no file and no arg exits 0" 0 led tier
+expect_contains "tier with no file prints act" "act" "$OUT"
+expect_exit "tier plan writes plan" 0 led tier plan
+if [ "$(cat "$S/tier")" = "plan" ]; then ok "tier file contains plan"; else bad "tier file contains plan ($(cat "$S/tier" 2>&1))"; fi
+bytes="$(wc -c < "$S/tier" | tr -d ' ')"
+if [ "$bytes" = "5" ]; then ok "tier file is 'plan' plus one newline, no more"; else bad "tier file is 'plan' plus one newline, no more ($bytes bytes)"; fi
+expect_exit "tier act overwrites" 0 led tier act
+if [ "$(cat "$S/tier")" = "act" ]; then ok "tier file contains act after overwrite"; else bad "tier file contains act after overwrite ($(cat "$S/tier" 2>&1))"; fi
+led tier plan >/dev/null 2>&1
+expect_exit "tier no arg prints current value" 0 led tier
+expect_contains "tier no arg prints plan" "plan" "$OUT"
+expect_exit "tier bogus exits 2" 2 led tier bogus
+expect_contains "tier bogus stderr names the value" "bogus" "$OUT"
+if [ "$(cat "$S/tier")" = "plan" ]; then ok "tier bogus leaves existing tier alone"; else bad "tier bogus leaves existing tier alone"; fi
+rm -rf "$S"
+expect_exit "tier plan creates missing .claude/state dir" 0 led tier plan
+if [ -f "$S/tier" ]; then ok "tier file exists after creating missing state dir"; else bad "tier file exists after creating missing state dir"; fi
+
 # --- missing ledger ---
 rm -f "$L/task.json"
 expect_exit "task-add without task.json exits 2" 2 led task-add x --goal y --owns z
