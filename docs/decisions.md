@@ -6,3 +6,4 @@ One line per merged task. Append only; never edit past entries.
 |---|---|---|---|
 | 2026-09-30 | parallel-workers-scaffold | Added planner agent, worktree-based parallel workers, and this decision log | Goals touching >3 files split into file-disjoint tasks so workers can run in parallel without merge conflicts, and every merge leaves an audit trail |
 | 2026-09-30 | brief-schema | Added BRIEF.schema.yaml (JSON-Schema subset in YAML), example brief, jq-based validate_brief.sh | No jsonschema lib available; yq here is the Python jq wrapper, so a small jq validator keeps it dependency-free |
+| 2026-09-30 | ledgers-spec | Added task.json (_header object) and progress.jsonl (HEADER record) ledgers plus bannered SPEC.md stub | Real spec unavailable; JSON has no comments, so field docs live in a skip-able header record |
