@@ -21,6 +21,14 @@ parsed="${parsed//$'\r'/}"   # python on Windows emits CRLF
 { IFS= read -r event; IFS= read -r tool; IFS= read -r fpath; IFS= read -r transcript; } <<< "$parsed"
 targs=(); [ -n "$transcript" ] && targs=(--transcript "$transcript")
 
+# remember the transcript path (only the hook is ever told it) so budget.py can find it without --transcript
+if [ -n "$transcript" ]; then
+  cur="$(cat "$S/transcript_path" 2>/dev/null)"
+  if [ "$cur" != "$transcript" ]; then
+    printf '%s' "$transcript" > "$S/transcript_path.tmp" && mv -f "$S/transcript_path.tmp" "$S/transcript_path"
+  fi
+fi
+
 case "$event" in
   PostToolUse)
     n="$(tr -dc '0-9' 2>/dev/null < "$S/steps")"; n=$(( ${n:-0} + 1 ))

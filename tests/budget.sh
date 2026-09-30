@@ -85,4 +85,38 @@ write_brief 1000000 100 1000 10; echo 99 > "$S/steps"
 expect_exit "overseer role: exhausted Bash still allowed" 0 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/budget.sh" <<< "$(pre_bash "tail -n 20 docs/ledgers/progress.jsonl")"
 QS_ROLE=overseer bash "$ROOT/scripts/hooks/budget.sh" <<< '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}' >/dev/null 2>&1
 [ "$(tr -dc '0-9' < "$S/steps")" = "99" ] && ok "overseer role: steps not counted" || bad "overseer role: steps=$(cat "$S/steps")"
+
+# --- transcript path memory: the hook remembers the transcript path across calls ---
+write_brief 1000000 100 1000 1000; echo 0 > "$S/steps"
+rm -f "$S/transcript_path"
+
+# PostToolUse with a non-empty transcript_path stores it verbatim
+hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{},"transcript_path":"'"$TR"'"}' >/dev/null
+[ "$(cat "$S/transcript_path" 2>/dev/null)" = "$TR" ] && ok "PostToolUse stores transcript_path" || bad "PostToolUse stores transcript_path (got '$(cat "$S/transcript_path" 2>/dev/null)')"
+
+# PreToolUse with a non-empty transcript_path also stores it (different path)
+OTHER="$T/other2.jsonl"
+echo '{"type":"assistant","message":{"id":"o1","model":"claude-sonnet-5","usage":{"input_tokens":7,"output_tokens":0}}}' > "$OTHER"
+hook budget.sh "$(pre_file Read "src/a.ts" "$OTHER")" >/dev/null
+[ "$(cat "$S/transcript_path")" = "$OTHER" ] && ok "PreToolUse stores transcript_path" || bad "PreToolUse stores transcript_path (got '$(cat "$S/transcript_path")')"
+
+# a call whose transcript_path is the empty string does not clobber the stored value
+hook budget.sh "$(pre_bash "npm test" "")" >/dev/null
+[ "$(cat "$S/transcript_path")" = "$OTHER" ] && ok "empty transcript_path does not clobber stored value" || bad "empty transcript_path clobbered stored value (got '$(cat "$S/transcript_path")')"
+
+# a call with no transcript_path key at all also does not clobber the stored value
+hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}' >/dev/null
+[ "$(cat "$S/transcript_path")" = "$OTHER" ] && ok "missing transcript_path does not clobber stored value" || bad "missing transcript_path clobbered stored value (got '$(cat "$S/transcript_path")')"
+
+# budget.py with no --transcript falls back to the stored path and sums the same tokens
+printf '%s' "$TR" > "$S/transcript_path"
+with_flag="$(budget --transcript "$TR")"; with_flag="${with_flag//$'\r'/}"
+without_flag="$(budget)"; without_flag="${without_flag//$'\r'/}"
+[ "$with_flag" = "$without_flag" ] && ok "budget.py falls back to stored transcript_path" || bad "budget.py fallback mismatch ('$without_flag' vs '$with_flag')"
+expect_contains "fallback sums the fixture transcript" '"tokens": 10,' "$without_flag"
+
+# neither --transcript nor a stored transcript_path file: still works, reports 0 tokens
+rm -f "$S/transcript_path"
+out="$(budget)"; out="${out//$'\r'/}"
+expect_contains "no transcript anywhere: 0 tokens" '"tokens": 0' "$out"
 finish
