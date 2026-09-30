@@ -87,6 +87,16 @@ case "$ALLOWED_TOOLS_LINE" in
 esac
 PROMPT_LINE="$(grep 'force_replan' "$ARGV_FILE" | head -n 1 || true)"
 expect_contains "prompt argument contains force_replan" "force_replan" "$PROMPT_LINE"
+expect_contains "prompt argument contains cancel" "cancel" "$ARGV"
+PROMPT_FIRST_LINE="$(awk '/^-p$/{getline; print; exit}' "$ARGV_FILE")"
+case "$PROMPT_FIRST_LINE" in
+  -*) bad "prompt argument must not start with '-' (got: $PROMPT_FIRST_LINE)" ;;
+  *) ok "prompt argument must not start with '-'" ;;
+esac
+case "$ARGV" in
+  *"name: overseer"*) bad "prompt argument must not contain frontmatter line 'name: overseer'" ;;
+  *) ok "prompt argument must not contain frontmatter line 'name: overseer'" ;;
+esac
 expect_contains "overseer session carries QS_ROLE=overseer (hooks exempt it)" "ENV QS_ROLE=overseer" "$ARGV"
 [ -f "$PROJECT/.claude/state/overseer_last.json" ] && ok "overseer_last.json written" || bad "overseer_last.json written"
 LOG_LINES="$(wc -l < "$PROJECT/.claude/state/overseer.log" 2>/dev/null || echo 0)"

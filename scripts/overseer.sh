@@ -58,8 +58,24 @@ do_tick() {
     return 0
   fi
 
-  local prompt result exit_code ts is_error
-  prompt="$(cat "$ROOT/.claude/agents/overseer.md")"
+  local prompt agent_body result exit_code ts is_error
+  # Strip the YAML frontmatter block (the first '---' line through the second
+  # '---' line) so the prompt can never start with a dash, which `claude -p`
+  # would otherwise reject as an unknown option.
+  agent_body="$("$PY" -c '
+import sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    text = f.read()
+lines = text.splitlines(True)
+if lines and lines[0].rstrip("\r\n") == "---":
+    for i in range(1, len(lines)):
+        if lines[i].rstrip("\r\n") == "---":
+            text = "".join(lines[i + 1:])
+            break
+sys.stdout.write(text.lstrip("\n"))
+' "$ROOT/.claude/agents/overseer.md")"
+  prompt="Overseer tick for the mission in this repository. Follow these instructions exactly:
+$agent_body"
 
   result="$(QS_ROLE=overseer claude -p "$prompt" \
     --max-turns 8 \
