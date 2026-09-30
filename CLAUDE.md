@@ -38,3 +38,18 @@ A change is done only when all of these hold:
 ## Subagents
 - `worker` (`.claude/agents/worker.md`): implements one bounded task and returns a summary and file paths.
 - `reviewer` (`.claude/agents/reviewer.md`): read-only audit against the definition of done; returns PASS or a numbered FAIL list.
+
+## Orchestration
+For any goal touching more than 3 files:
+
+1. **Plan.** Run `planner`. It writes `docs/plan.md`, a numbered list of tasks, each owning a disjoint set of files.
+2. **Dispatch.** For each task, create a worktree on its own branch off the session branch:
+   `git worktree add .claude/worktrees/<task-slug> -b <session-branch>--<task-slug>`
+   Dispatch one `worker` per task, all in parallel, each told its worktree path and owned files.
+3. **Worker output.** Workers return file paths and a 3-line summary only, never diffs or logs.
+4. **Integrate.** The lead merges each task branch into the session branch (`git merge --no-ff <session-branch>--<task-slug>`), then runs `reviewer`, then `bash scripts/gate.sh`.
+5. **Log.** After every merged task, append one line to `docs/decisions.md`: date, task, decision, why.
+6. **Review loop.** Reviewer FAIL → fix and re-run reviewer and gate, max 3 cycles. Still failing → open the PR with `[needs-human]` in the title (and the `needs-human` label if it exists) and stop.
+7. **Clean up.** After merging: `git worktree remove .claude/worktrees/<task-slug>` and `git branch -d <session-branch>--<task-slug>`. Never push task branches.
+
+`.claude/worktrees/` is gitignored. Never `git add` it.
