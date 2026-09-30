@@ -14,7 +14,7 @@ budgets:
   tokens: 5000000
   cost_usd: 40
   wall_clock_min: 480
-  steps: 400
+  steps: 400          # every tool call counts, including the subagents': a one-file mission uses ~70; keep this >= 60
   stall_limit: 3
   replan_limit: 5
   critic_rounds: 2

@@ -63,4 +63,16 @@ d2="$(cat "$CLAUDE_PROJECT_DIR/brief_builtin.json")"
 d1="${d1//$'\r'/}"; d2="${d2//$'\r'/}"
 if [ "$d1" = "$d2" ]; then ok "built-in reader output matches default reader"; else bad "built-in reader output differs from default reader"; fi
 
+# --- built-in reader: trailing comments are dropped, a # inside quotes is kept ---
+CMT="$CLAUDE_PROJECT_DIR/comments.yaml"
+sed -e 's/^  steps: .*/  steps: 400   # every tool call counts/' \
+    -e 's/^  cost_usd: .*/  cost_usd: 40 #no space before text/' \
+    -e 's/^  goal: .*/  goal: "Ship issue #7 to prod"/' "$BRIEF" > "$CMT"
+rm -f "$SJSON" "$STARTED"
+expect_exit "built-in reader: trailing comment after a number" 0 env QS_NO_YAML=1 "$QS_PYTHON" "$ROOT/scripts/brief.py" validate --brief "$CMT"
+c="$(cat "$SJSON" 2>/dev/null)"
+expect_contains "built-in reader: steps parsed as 400" '"steps": 400' "$c"
+expect_contains "built-in reader: cost_usd parsed as 40" '"cost_usd": 40' "$c"
+expect_contains "built-in reader: # inside quotes kept" 'issue #7' "$c"
+
 finish

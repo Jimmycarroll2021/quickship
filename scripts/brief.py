@@ -116,10 +116,24 @@ def _parse_flow_map(s):
     return result
 
 
+def _strip_comment(line):
+    # A comment starts at a '#' that is at the line start or preceded by whitespace, outside quotes.
+    quote = None
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
+
+
 def _tokenize(text):
     lines = []
     for raw_line in text.splitlines():
-        line = raw_line.rstrip()
+        line = _strip_comment(raw_line).rstrip()
         stripped = line.strip()
         if stripped == "" or stripped.startswith("#"):
             continue

@@ -95,4 +95,23 @@ touch "$S/cancel"
 expect_exit "overseer role: may write its note under cancel" 0 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/guard.sh" <<< "$(file_json Write "docs/overseer.md")"
 expect_exit "overseer role: hard rules still apply" 2 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/guard.sh" <<< "$(bash_json "git push --force origin main")"
 rm -f "$S/cancel"
+# ---- Windows paths: the Write/Edit/Read tools pass backslash paths; every file rule must see them as slashes ----
+# Fixtures are built with json.dumps so the backslashes are valid JSON escapes, exactly as Claude Code sends them.
+file_json_py() { "$QS_PYTHON" -c 'import json,sys; print(json.dumps({"hook_event_name":sys.argv[3],"tool_name":sys.argv[1],"tool_input":{"file_path":sys.argv[2]},"tool_response":{}}))' "$1" "$2" "${3:-PreToolUse}"; }
+OUT="$(printf '%s' "$(file_json_py Write 'C:\repo\x')" | "$QS_PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["tool_input"]["file_path"])')"
+expect_contains "backslash: fixture is valid json carrying a backslash path" 'C:\repo\x' "$OUT"
+expect_exit "backslash: deny write .env" 2 hook guard.sh "$(file_json_py Write 'C:\repo\.env')"
+expect_exit "backslash: deny write vercel.json" 2 hook guard.sh "$(file_json_py Write 'C:\repo\vercel.json')"
+expect_exit "backslash: deny edit infra" 2 hook guard.sh "$(file_json_py Edit 'C:\repo\infra\main.tf')"
+expect_exit "backslash: allow write src" 0 hook guard.sh "$(file_json_py Write 'C:\repo\src\a.ts')"
+echo plan > "$S/tier"
+expect_exit "backslash: plan tier allows docs\plan.md" 0 hook guard.sh "$(file_json_py Write 'C:\repo\docs\plan.md')"
+expect_exit "backslash: plan tier denies src\a.ts" 2 hook guard.sh "$(file_json_py Write 'C:\repo\src\a.ts')"
+rm -f "$S/tier"; touch "$S/cancel"
+expect_exit "backslash: cancel allows docs\REPORT.md" 0 hook guard.sh "$(file_json_py Write 'C:\repo\docs\REPORT.md')"
+rm -f "$S/cancel"
+printf '{"id":"s020","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "backslash: PostToolUse read of work\_untrusted records leg" 0 hook guard.sh "$(file_json_py Read 'C:\repo\work\_untrusted\x.md' PostToolUse)"
+expect_contains "backslash: legs file has untrusted_content" "untrusted_content" "$(cat "$S/legs/s020" 2>/dev/null)"
+rm -f "$S/current_step.json"
 finish

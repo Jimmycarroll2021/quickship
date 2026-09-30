@@ -20,6 +20,7 @@ print(e); print(t); print(str(v))
 parsed="${parsed//$'\r'/}"   # python on Windows emits CRLF
 event="${parsed%%$'\n'*}"; rest="${parsed#*$'\n'}"
 tool="${rest%%$'\n'*}"; raw="${rest#*$'\n'}"; arg="${raw//$'\n'/ }"   # raw keeps newlines for the split
+case "$tool" in Write|Edit|MultiEdit|Read) arg="${arg//\\//}";; esac   # Windows tools pass backslash paths
 S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
 # Subcommands of a Bash line, one per element of SEGS: split on && || ; | |& and newlines (as Claude Code matches
 # permission rules), leading space trimmed, and git's -C <dir> / -c <k=v> / --git-dir / --work-tree options dropped
