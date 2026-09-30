@@ -2,13 +2,40 @@
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(npm *)", "Bash(npx *)", "Bash(pnpm *)", "Bash(yarn *)",
-      "Bash(git add *)", "Bash(git commit *)", "Bash(git push *)",
-      "Bash(git checkout *)", "Bash(git branch *)",
-      "Bash(python *)", "Bash(pytest *)", "Bash(uv *)", "Bash(pip *)",
-      "Bash(gh *)", "Bash(docker *)", "Bash(make *)",
-      "WebFetch", "WebSearch"
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git checkout *)",
+      "Bash(git branch *)",
+      "Bash(python *)",
+      "Bash(pytest *)",
+      "Bash(uv *)",
+      "Bash(pip *)",
+      "Bash(gh *)",
+      "Bash(docker *)",
+      "Bash(make *)",
+      "WebFetch",
+      "WebSearch"
     ]
   },
-  "attribution": { "sessionUrl": true }
+  "attribution": {
+    "sessionUrl": true
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/gate.sh",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
 }
