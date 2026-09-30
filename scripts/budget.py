@@ -4,6 +4,8 @@
 Usage: budget.py [--transcript <path>] [--exhausted-only]
 Reads $S/brief.json (exit 2 if absent), $S/started_at, $S/steps, and token usage from the
 transcript JSONL plus sibling <stem>*.jsonl files (subagent transcripts, best effort).
+When --transcript is omitted, falls back to the path remembered in $S/transcript_path
+(written by scripts/hooks/budget.sh, the only caller that is ever told the path).
 Prints the budget JSON, or with --exhausted-only the comma-separated exhausted names. Exit 0.
 """
 import argparse
@@ -37,6 +39,22 @@ def read_text(path):
             return f.read().strip()
     except OSError:
         return ""
+
+
+def normalize_path(p):
+    """A path written to a state file (e.g. by the bash hook) may be in MSYS/git-bash mount
+    form ("/tmp/...", "/c/Users/..."). A CLI arg gets this auto-translated to a native Windows
+    path by the MSYS runtime on exec, but a path read back from a file here gets no such help,
+    so it must stay byte-exact on disk. Resolve it via cygpath (ships with Git for Windows) if
+    the raw path isn't directly openable."""
+    if not p or os.name != "nt" or os.path.exists(p):
+        return p
+    try:
+        r = subprocess.run(["cygpath", "-w", p], capture_output=True, text=True, timeout=5)
+        w = r.stdout.strip() if r.returncode == 0 else ""
+        return w or p
+    except (OSError, subprocess.SubprocessError):
+        return p
 
 
 def rates_for(model):
@@ -121,7 +139,8 @@ def main():
         steps = int(read_text(os.path.join(s, "steps")) or 0)
     except ValueError:
         steps = 0
-    tokens, cost = usage(a.transcript)
+    transcript = a.transcript or normalize_path(read_text(os.path.join(s, "transcript_path"))) or None
+    tokens, cost = usage(transcript)
     vals = {"tokens": tokens, "cost_usd": round(cost, 4),
             "elapsed_min": round(elapsed_min(read_text(os.path.join(s, "started_at"))), 1), "steps": steps}
     limits = {lim: budgets.get(lim, 0) for _, lim in DIMS}
