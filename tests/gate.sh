@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# gate.sh must test the tree it is run from (worktree), scan untracked files, and pass on a clean repo.
+source "$(dirname "$0")/lib.sh"
+mk() { # mk <dir>: fresh git repo with a copy of scripts/gate.sh and an initial commit
+  git init -q -b main "$1" && cp -r "$ROOT/scripts" "$1/" && (cd "$1" && git add -A && git -c user.email=t@t -c user.name=t commit -qm init)
+}
+# The failing test exists ONLY in the worktree. With the old root resolution the gate silently checks main and passes.
+main="$(tmpdir)"; mk "$main"
+( cd "$main" && git worktree add -q .claude/worktrees/wt -b main--wt \
+  && cd .claude/worktrees/wt && printf '{"name":"x","scripts":{"test":"exit 1"}}' > package.json && mkdir -p node_modules \
+  && git add package.json && git -c user.email=t@t -c user.name=t commit -qm "failing test" )
+OUT="$(cd "$main/.claude/worktrees/wt" && CLAUDE_PROJECT_DIR="$main" bash scripts/gate.sh 2>&1)"; got=$?
+[ "$got" = 2 ] && ok "worktree: gate exit 2 with CLAUDE_PROJECT_DIR set to main" || bad "worktree: want exit 2, got $got: $(printf '%s' "$OUT" | tail -n 2)"
+expect_contains "worktree: failure names the test step" "test failed" "$OUT"
+
+clean="$(tmpdir)"; mk "$clean"
+expect_exit "clean repo passes" 0 bash -c "cd '$clean' && bash scripts/gate.sh"
+printf '%s%s\n' AKIA ABCDEFGHIJKLMNOP > "$clean/untracked.txt"   # split so this file never matches the scan
+OUT="$(cd "$clean" && bash scripts/gate.sh 2>&1)"; got=$?
+[ "$got" = 2 ] && ok "untracked secret: exit 2" || bad "untracked secret: want exit 2, got $got"
+expect_contains "untracked secret: names the file" "untracked.txt" "$OUT"
+rm "$clean/untracked.txt"; printf 'see %s%s\n' sk-ant- api03-abcdefghijklmnopqrstuvwxyz0123 > "$clean/notes.md"
+expect_exit "sk-ant key in untracked file: exit 2" 2 bash -c "cd '$clean' && bash scripts/gate.sh"
+rm "$clean/notes.md"; echo "the task-list uses sk-slugs-like-this-one-here-ok" > "$clean/prose.md"
+expect_exit "prose with sk- prefix is not a secret" 0 bash -c "cd '$clean' && bash scripts/gate.sh"
+finish
