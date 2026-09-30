@@ -142,7 +142,8 @@ if [ -f "$BRIEF" ]; then
     else
       results+=("budget: PASS ($steps / $budget steps)")
       pending=0; cfail=0
-      while IFS= read -r -u 3 c; do
+      mapfile -t crits < <(yq -c '.success_criteria[]' "$BRIEF")
+      for c in "${crits[@]}"; do
         eval_criterion "$c"
         id="$(jq -r '.id' <<<"$c")"; kind="$(jq -r '.kind' <<<"$c")"
         rows+=("| $(cell "$id") | $kind | $c_result | $(cell "$c_detail") |")
@@ -150,7 +151,7 @@ if [ -f "$BRIEF" ]; then
           FAIL) cfail=$((cfail+1)); failures+=("criterion $id failed: $c_detail") ;;
           PENDING_JUDGE) pending=$((pending+1)) ;;
         esac
-      done 3< <(yq -c '.success_criteria[]' "$BRIEF")
+      done
       if [ ${#failures[@]} -gt 0 ]; then state=HALT
       elif [ "$pending" -gt 0 ]; then state=DONE_PARTIAL
       else state=DONE; fi
