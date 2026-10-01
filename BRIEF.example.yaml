@@ -11,7 +11,7 @@ success_criteria:
   - {kind: judge, rubric: "README explains what a Mission Brief is"}
 # Resource limits that stop the run when exceeded (see budget.py); stall_limit/replan_limit/critic_rounds are counts, not resources.
 budgets:
-  tokens: 5000000
+  tokens: 5000000    # input + output + cache-creation tokens; cache reads are not counted. Cost and wall clock are the caps that bite
   cost_usd: 40
   wall_clock_min: 480
   steps: 400          # every tool call counts, including the subagents': a one-file mission uses ~70; keep this >= 60

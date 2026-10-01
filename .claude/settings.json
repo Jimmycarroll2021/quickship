@@ -10,7 +10,7 @@
       "Bash(gh *)", "Bash(make *)",
       "Bash(bash scripts/gate.sh *)", "Bash(bash scripts/diffbase.sh *)", "Bash(bash tests/run.sh *)",
       "Bash(bash tests/guard.sh *)", "Bash(bash tests/gate.sh *)", "Bash(bash tests/diffbase.sh *)",
-      "Bash(bash scripts/check_criteria.sh *)", "Bash(cat *)", "Bash(ls *)", "Bash(echo *)", "Bash(date *)",
+      "Bash(cat *)", "Bash(ls *)", "Bash(echo *)", "Bash(date *)",
       "Bash(mkdir *)", "Bash(rm -f .claude/state/force_replan)", "Bash(rm -f .claude/state/cancel)", "Bash(touch *)",
       "Bash(cd *)", "Bash(git -C *)", "Bash(sleep *)", "Bash(tail *)", "Bash(head *)", "Bash(grep *)", "Bash(wc *)",
       "Bash(git remote *)", "Bash(git ls-remote *)"
@@ -39,13 +39,13 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|Read|WebFetch|WebSearch",
+        "matcher": "Bash|Write|Edit|MultiEdit|Read|WebFetch|WebSearch|mcp__.*",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/guard.sh", "timeout": 10 }
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|mcp__.*",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/idem.sh", "timeout": 10 }
         ]
@@ -59,13 +59,13 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Read|WebFetch|WebSearch",
+        "matcher": "Bash|Read|WebFetch|WebSearch|mcp__.*",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/guard.sh", "timeout": 10 }
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|mcp__.*",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/idem.sh", "timeout": 10 }
         ]
