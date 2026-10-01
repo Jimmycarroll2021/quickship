@@ -53,6 +53,22 @@ expect_exit "judge -> deferred, exit 0" 0 "$QS_PYTHON" "$CC"
 expect_contains "criteria.json deferred=1" '"deferred": 1' "$(cat "$LEDGER")"
 expect_contains "rubric recorded as detail" "looks good" "$(cat "$LEDGER")"
 
+# the reviewer's grade of a judge rubric is recorded with --judge <index> <PASS|FAIL> --evidence "<quoted output>"
+write_brief '[{"kind":"test","cmd":"exit 0","expect":0},{"kind":"judge","rubric":"summary says 0 failed"}]'
+expect_exit "run before grading" 0 "$QS_PYTHON" "$CC"
+expect_exit "judge grade PASS recorded" 0 "$QS_PYTHON" "$CC" --judge 1 PASS --evidence "diffbase.sh: 3 passed, 0 failed"
+expect_contains "criteria.json judge pass" '"status": "pass"' "$(cat "$LEDGER")"
+expect_contains "criteria.json keeps the evidence" "3 passed, 0 failed" "$(cat "$LEDGER")"
+expect_contains "criteria.json passed=2 after grade" '"passed": 2' "$(cat "$LEDGER")"
+expect_contains "criteria.json deferred=0 after grade" '"deferred": 0' "$(cat "$LEDGER")"
+expect_contains "grade prints the summary" "passed=2 failed=0 deferred=0" "$OUT"
+expect_exit "judge grade FAIL recorded, exit 2" 2 "$QS_PYTHON" "$CC" --judge 1 FAIL --evidence "summary line missing"
+expect_contains "criteria.json judge fail" '"status": "fail"' "$(cat "$LEDGER")"
+expect_contains "criteria.json failed=1 after FAIL grade" '"failed": 1' "$(cat "$LEDGER")"
+expect_exit "judge grade on a non-judge index exits 2" 2 "$QS_PYTHON" "$CC" --judge 0 PASS --evidence "x"
+expect_exit "judge grade without evidence exits 2" 2 "$QS_PYTHON" "$CC" --judge 1 PASS
+expect_exit "judge grade out of range exits 2" 2 "$QS_PYTHON" "$CC" --judge 7 PASS --evidence "x"
+
 # unknown kind -> fail
 write_brief '[{"kind":"bogus"}]'
 expect_exit "unknown kind -> fail, exit 2" 2 "$QS_PYTHON" "$CC"

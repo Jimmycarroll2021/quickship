@@ -64,6 +64,47 @@ progress_line() { # progress_line <ts> <step> <slug> <event> <hash>
 # overseer_status.py
 # =============================================================================
 
+# --- case: assumption/note/blocked lines after a merge share the merge's hash; they are not a stall.
+# last3_same_slug_and_hash looks only at work events (dispatched, failed, timeout, retry, replan). ---
+P="$(status_project)"
+export CLAUDE_PROJECT_DIR="$P"
+{
+  progress_line "$(iso_ago 9)" s001 hello dispatched aaaa
+  progress_line "$(iso_ago 8)" s002 hello merged bbbb
+  progress_line "$(iso_ago 7)" s003 hello assumption bbbb
+  progress_line "$(iso_ago 6)" s004 hello assumption bbbb
+  progress_line "$(iso_ago 5)" s005 hello blocked bbbb
+} > "$P/docs/ledgers/progress.jsonl"
+expect_exit "status: assumption burst exits 0" 0 "$PY" "$STATUS"
+J="${OUT//$''/}"
+expect_contains "status: assumption burst is not a stall" "false" "$(jget "$J" 'd["last3_same_slug_and_hash"]')"
+{
+  progress_line "$(iso_ago 9)" s001 x dispatched aaaa
+  progress_line "$(iso_ago 8)" s002 x note aaaa
+  progress_line "$(iso_ago 7)" s003 x failed aaaa
+  progress_line "$(iso_ago 6)" s004 x assumption aaaa
+  progress_line "$(iso_ago 5)" s005 x dispatched aaaa
+} > "$P/docs/ledgers/progress.jsonl"
+expect_exit "status: three work events same slug+hash exits 0" 0 "$PY" "$STATUS"
+J="${OUT//$''/}"
+expect_contains "status: three work events with same slug+hash is a stall even with notes between" "true" "$(jget "$J" 'd["last3_same_slug_and_hash"]')"
+
+# --- flags are set through the status script (the Write tool is refused on .claude/state paths in unattended sessions) ---
+P="$(status_project)"
+export CLAUDE_PROJECT_DIR="$P"
+expect_exit "set-flag force_replan exits 0" 0 "$PY" "$STATUS" --set-flag force_replan
+expect_contains "set-flag prints confirmation" "flag force_replan set" "$OUT"
+[ -f "$P/.claude/state/force_replan" ] && ok "set-flag wrote the force_replan file" || bad "set-flag wrote the force_replan file"
+expect_exit "set-flag cancel with reason exits 0" 0 "$PY" "$STATUS" --set-flag cancel --reason "no progress for 50 min"
+expect_contains "cancel file holds the reason" "no progress for 50 min" "$(cat "$P/.claude/state/cancel")"
+expect_exit "set-flag twice is a no-op" 0 "$PY" "$STATUS" --set-flag cancel --reason "again"
+expect_contains "set-flag twice says already set" "already set" "$OUT"
+expect_contains "cancel reason unchanged" "no progress for 50 min" "$(cat "$P/.claude/state/cancel")"
+expect_exit "set-flag unknown name exits 2" 2 "$PY" "$STATUS" --set-flag other
+expect_exit "status after flags exits 0" 0 "$PY" "$STATUS"
+J="${OUT//$''/}"
+expect_contains "status: flags.cancel true" "true" "$(jget "$J" 'd["flags"]["cancel"]')"
+
 # --- case: full fixtures, last three lines share slug and hash, newest line 50 min old, 5 trailing DENY ---
 P="$(status_project)"
 export CLAUDE_PROJECT_DIR="$P"
@@ -315,6 +356,8 @@ expect_contains "overseer.md frontmatter tools has Bash" "Bash" "$TOOLS_LINE"
 expect_contains "overseer.md frontmatter model sonnet" "model: sonnet" "$AGENT"
 expect_contains "overseer.md names the status script" "python3 scripts/overseer_status.py" "$AGENT"
 expect_contains "overseer.md mentions last3_same_slug_and_hash" "last3_same_slug_and_hash" "$AGENT"
+expect_contains "overseer.md sets flags with --set-flag" "--set-flag cancel" "$AGENT"
+expect_contains "overseer.md sets force_replan with --set-flag" "--set-flag force_replan" "$AGENT"
 expect_contains "overseer.md mentions repeated_denials" "repeated_denials" "$AGENT"
 
 # --- case: stub reports is_error:true -> exit 1 ---

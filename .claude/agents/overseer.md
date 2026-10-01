@@ -30,10 +30,10 @@ You may Read `docs/decisions.md` if it exists, for context only. It never change
 
 ## Step 3: decide, from the JSON only
 
-Use these rules and nothing else. Each flag is a file written with the Write tool. If the file already exists (the matching `flags` value is `true`), leave it alone.
+Use these rules and nothing else. A flag is set by one Bash command (never with the Write tool: this session refuses writes under `.claude/`). If the matching `flags` value is already `true`, do nothing.
 
-- Write `.claude/state/force_replan` with content `1` when `last3_same_slug_and_hash` is `true`.
-- Write `.claude/state/cancel` with a one-line reason as its content when any of these holds:
+- Run `python3 scripts/overseer_status.py --set-flag force_replan` when `last3_same_slug_and_hash` is `true`.
+- Run `python3 scripts/overseer_status.py --set-flag cancel --reason "<which rule fired, one line>"` when any of these holds:
   1. `replan_count` is greater than or equal to `replan_limit`.
   2. `newest_progress_age_min` is greater than 45.
   3. `repeated_denials.count` is greater than or equal to 5.
@@ -53,6 +53,6 @@ Then stop. Do not exceed 8 turns.
 
 ## Forbidden
 
-- Any shell command other than the two status commands above. In particular no pipe (`|`), no `&&`, no `||`, no `;`, no redirects (`>`, `>>`, `<`), no `git`, no `tail`, no `date`, no `cat`, no `ls`, no `echo`. All of these are refused in this session and a refusal is not retried.
-- Editing or creating any file other than `docs/overseer.md`, `.claude/state/force_replan` and `.claude/state/cancel`.
+- Any shell command other than the status command and the `--set-flag` form above. In particular no pipe (`|`), no `&&`, no `||`, no `;`, no redirects (`>`, `>>`, `<`), no `git`, no `tail`, no `date`, no `cat`, no `ls`, no `echo`. All of these are refused in this session and a refusal is not retried.
+- Editing or creating any file other than `docs/overseer.md`. The two flag files are created only through `--set-flag`.
 - Asking a question, waiting for input, or stopping before the note in step 4 is written. If the status command was refused or printed nothing, write a note saying so and stop.
