@@ -3,23 +3,29 @@
 # sessions and fresh clones where ~/.claude settings do not exist. Fails closed: malformed input -> exit 2.
 # Input: hook JSON on stdin. Exit 0 = allow, exit 2 = deny (reason on stderr).
 #
-# Clauses, in order:  1 hard rules (always)   2 overseer cancel flag   3 plan/act tier   4 lethal-trifecta legs.
+# Clauses, in order:  1 hard rules (always)   1b reviewer subagent (agent_type == reviewer)   1c overseer role
+# (QS_ROLE=overseer; exempt from the rest)   2 overseer cancel flag   3 plan/act tier   4 lethal-trifecta legs.
 # Clauses 2-4 act only when their state file exists (.claude/state/{cancel,tier,current_step.json}), i.e. during a run.
 # PostToolUse never denies; it only records the leg a tool call used (clause 4).
+# Every PreToolUse call leaves one line in .claude/state/hook_log:  allowed  <utc ts>\t<tool>\t<arg>
+#                                                                   denied   <utc ts>\tDENY\t<tool>\t<reason>\t<arg>
 set -u
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
 in="$(cat)"
 parsed="$(printf '%s' "$in" | "$PY" -c '
 import json, sys
 d = json.load(sys.stdin); e = d.get("hook_event_name", "PreToolUse"); t = d["tool_name"]; i = d["tool_input"]
+a = d.get("agent_type") or "lead"   # subagent type; absent for the lead session
 if t == "Bash": v = i["command"]
 elif t in ("Write", "Edit", "MultiEdit", "Read"): v = i["file_path"]
+elif t.startswith("mcp__"): v = " ".join(f"{k}={i[k]}" for k in ("head", "base", "title", "url") if i.get(k))  # log summary only
 else: v = i.get("url") or i.get("query") or ""
-print(e); print(t); print(str(v))
+print(e); print(t); print(str(a)); print(str(v))
 ' 2>/dev/null)" || { echo "guard: malformed hook input, denied" >&2; exit 2; }
 parsed="${parsed//$'\r'/}"   # python on Windows emits CRLF
 event="${parsed%%$'\n'*}"; rest="${parsed#*$'\n'}"
-tool="${rest%%$'\n'*}"; raw="${rest#*$'\n'}"; arg="${raw//$'\n'/ }"   # raw keeps newlines for the split
+tool="${rest%%$'\n'*}"; rest="${rest#*$'\n'}"
+agent="${rest%%$'\n'*}"; raw="${rest#*$'\n'}"; arg="${raw//$'\n'/ }"   # raw keeps newlines for the split
 case "$tool" in Write|Edit|MultiEdit|Read) arg="${arg//\\//}";; esac   # Windows tools pass backslash paths
 S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
 # Subcommands of a Bash line, one per element of SEGS: split on && || ; | |& and newlines (as Claude Code matches
@@ -36,7 +42,16 @@ split_subcmds() {
   done < <(printf '%s\n' "$raw" | sed -E 's/(&&|\|\||\|&|;|\|)/\n/g')
 }
 [ "$tool" = Bash ] && split_subcmds
-deny() { echo "guard: denied ($1): $tool $arg" >&2; exit 2; }
+deny() {
+  printf '%s\tDENY\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$tool" "$1" "$arg" >> "$S/hook_log" 2>/dev/null
+  echo "guard: denied ($1): $tool $arg" >&2; exit 2
+}
+allow() { printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$tool" "$arg" >> "$S/hook_log" 2>/dev/null; exit 0; }
+# Read-only subcommands: inspection, the gate and tests, the state CLIs. Shared by the plan tier, the reviewer and the overseer.
+ro_re='^(git[[:space:]]+(status|log|diff|ls-files|rev-parse|show|branch([[:space:]]+--list)?|worktree[[:space:]]+list)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|tr|sort|uniq|cut|awk|sed[[:space:]]+-n|bash[[:space:]]+scripts/(gate|diffbase)\.sh|bash[[:space:]]+tests/|python3?[[:space:]]+scripts/(ledger|budget|brief|check_criteria)\.py)([[:space:]]|$)'
+has_redirect() { # a > redirect (other than into .claude/state/) or a tee anywhere in the line
+  { [[ "$arg" =~ \> ]] && ! [[ "$arg" =~ \>[[:space:]]*\.claude/state/ ]]; } || [[ "$arg" =~ [[:space:]]tee[[:space:]] ]]
+}
 is_env_file() { # basename is .env or .env.<x>, except *.example|sample|template
   local b="${1##*/}"
   [[ "$b" =~ ^\.env(\..+)?$ ]] && ! [[ "$b" =~ \.(example|sample|template)$ ]]
@@ -45,6 +60,10 @@ leg_of() { # untrusted_content | outbound | none, for this tool call
   case "$tool" in
     WebFetch|WebSearch) echo untrusted_content;;
     Read) [[ "$arg" =~ (^|/)work/_untrusted/ ]] && echo untrusted_content || echo none;;
+    mcp__*) # MCP tools: write-side GitHub tools send data out; get/list/search/read/fetch/download tools bring untrusted content in
+      if [[ "$tool" =~ ^mcp__.*__(create_pull_request|update_pull_request|merge_pull_request|create_or_update_file|push_files|create_issue|add_issue_comment|create_release|create_branch)$ ]]; then echo outbound
+      elif [[ "$tool" =~ ^mcp__.*__(get|list|search|read|fetch|download)_ ]]; then echo untrusted_content
+      else echo none; fi;;
     Bash) # per subcommand; outbound in any subcommand wins over untrusted_content
       local seg l=none
       for seg in "${SEGS[@]}"; do
@@ -66,8 +85,6 @@ if [ "$event" = PostToolUse ]; then
   fi
   exit 0
 fi
-
-printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$tool" "$arg" >> "$S/hook_log" 2>/dev/null
 
 # --- 1. hard rules ---
 case "$tool" in
@@ -105,8 +122,50 @@ case "$tool" in
     ;;
 esac
 
-# Clauses 2-4 are mission-run policy for the lead and its subagents; the overseer session (QS_ROLE=overseer) is exempt.
-[ "${QS_ROLE:-lead}" = overseer ] && exit 0
+# --- 1b. reviewer subagent: read-only audit. It may inspect, run the gate, tests and evals, and the brief's own test
+# criteria (verbatim), and never changes git state or writes a file. ---
+if [ "$agent" = reviewer ]; then
+  case "$tool" in
+    Write|Edit|MultiEdit) deny "reviewer is read-only";;
+    Bash)
+      for seg in "${SEGS[@]}"; do
+        [[ "$seg" =~ (^|[[:space:]])git[[:space:]]+(add|commit|merge|checkout|worktree|push)([[:space:]]|$) ]] && deny "reviewer never changes git state"
+        [[ "$seg" =~ (^|[[:space:]])gh[[:space:]] ]] && deny "reviewer never changes git state"
+      done
+      has_redirect && deny "reviewer may only run read-only, test and eval commands (no redirects)"
+      # success_criteria of kind test from the brief, one per line; no brief -> no extra allowances
+      brief_cmds="$("$PY" -c '
+import json, sys
+try: b = json.load(open(sys.argv[1]))
+except Exception: sys.exit(0)
+for c in b.get("success_criteria", []):
+    if isinstance(c, dict) and c.get("kind") == "test" and c.get("cmd"): print(c["cmd"])
+' "$S/brief.json" 2>/dev/null)"; brief_cmds="${brief_cmds//$'\r'/}"
+      runner_re='^(pytest|npm[[:space:]]+test|npm[[:space:]]+run[[:space:]]+[A-Za-z0-9:_-]+|pnpm[[:space:]]+test|yarn[[:space:]]+test|uv[[:space:]]+run[[:space:]]+[^[:space:]]+|make[[:space:]]+test|cargo[[:space:]]+test|go[[:space:]]+test)([[:space:]]|$)'
+      for seg in "${SEGS[@]}"; do
+        s="${seg%"${seg##*[![:space:]]}"}"                                    # trailing space from the split
+        [[ "$s" =~ ^[A-Za-z_][A-Za-z0-9_]*=\$\((.*)\)$ ]] && s="${BASH_REMATCH[1]}"   # base=$(bash scripts/diffbase.sh)
+        [[ "$s" =~ $ro_re ]] && continue
+        [[ "$s" =~ ^python3?[[:space:]]+scripts/check_criteria\.py([[:space:]]|$) ]] && continue
+        [[ "$s" =~ $runner_re ]] && continue
+        hit=0; while IFS= read -r c; do [ -n "$c" ] && [ "$c" = "$s" ] && hit=1; done <<< "$brief_cmds"
+        [ "$hit" = 1 ] || deny "reviewer may only run read-only, test and eval commands ($seg)"
+      done
+      ;;
+  esac
+fi
+
+# --- 1c. overseer session (QS_ROLE=overseer): writes only its note and the two flag files, runs only its status scripts
+# and read-only commands; exempt from clauses 2-4, which are mission-run policy for the lead and its subagents. ---
+if [ "${QS_ROLE:-lead}" = overseer ]; then
+  case "$tool" in
+    Write|Edit|MultiEdit) [[ "$arg" =~ (^|/)(docs/overseer\.md|\.claude/state/(force_replan|cancel))$ ]] || deny "overseer may only write docs/overseer.md and the two flag files";;
+    Bash) for seg in "${SEGS[@]}"; do
+            [[ "$seg" =~ ^python3?[[:space:]]+scripts/(overseer_status|budget)\.py([[:space:]]|$) || "$seg" =~ $ro_re ]] || deny "overseer may only run its status scripts and read-only commands ($seg)"
+          done;;
+  esac
+  allow
+fi
 
 # --- 2. overseer cancel: only reads and the final report may proceed ---
 if [ -f "$S/cancel" ]; then
@@ -120,13 +179,11 @@ fi
 # --- 3. plan tier: read-only, except the plan, the ledgers and the state dir ---
 tier="$(cat "$S/tier" 2>/dev/null)"; tier="${tier//[$'\r\n ']/}"
 if [ "$tier" = plan ]; then
-  ro_re='^(git[[:space:]]+(status|log|diff|ls-files|rev-parse|show|branch([[:space:]]+--list)?|worktree[[:space:]]+list)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|tr|sort|uniq|cut|awk|sed[[:space:]]+-n|bash[[:space:]]+scripts/(gate|diffbase)\.sh|bash[[:space:]]+tests/|python3?[[:space:]]+scripts/(ledger|budget|brief|check_criteria)\.py)([[:space:]]|$)'
   case "$tool" in
     Read|Glob|Grep) ;;
     Write|Edit|MultiEdit) [[ "$arg" =~ (^|/)(docs/plan\.md|docs/ledgers/|\.claude/state/) ]] || deny "plan tier: cannot write $arg";;
     Bash)
-      if [[ "$arg" =~ \> ]] && ! [[ "$arg" =~ \>[[:space:]]*\.claude/state/ ]]; then deny "plan tier: no redirects"; fi
-      [[ "$arg" =~ [[:space:]]tee[[:space:]] ]] && deny "plan tier: no redirects"
+      has_redirect && deny "plan tier: no redirects"
       for seg in "${SEGS[@]}"; do [[ "$seg" =~ $ro_re ]] || deny "plan tier: read-only commands only ($seg)"; done
       ;;
     *) deny "plan tier: $tool not allowed";;
@@ -144,4 +201,4 @@ if [ -f "$S/current_step.json" ]; then
     [[ "$have" == *",$other,"* ]] && deny "trifecta: step $sid already used $other, so $leg is not allowed in the same step"
   fi
 fi
-exit 0
+allow
