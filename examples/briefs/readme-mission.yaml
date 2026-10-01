@@ -1,0 +1,25 @@
+# The first mission quickship ran on itself (2026-09-30): DONE in 37 minutes, 72 steps, about $4.56, PR opened.
+mission:
+  goal: "Add a README.md at the repo root that explains what quickship is, how a human writes BRIEF.yaml and runs scripts/run.sh, and where the report ends up"
+  deliverables:
+    - README.md
+success_criteria:
+  - {kind: file, path: README.md, must_contain: "quickship"}
+  - {kind: grep, pattern: "## Lead loop", path: CLAUDE.md}
+  - {kind: test, cmd: "bash tests/run.sh", expect: 0}
+  - {kind: judge, rubric: "README explains what a Mission Brief is"}
+budgets:
+  tokens: 5000000
+  cost_usd: 40
+  wall_clock_min: 480
+  steps: 400
+  stall_limit: 3
+  replan_limit: 5
+  critic_rounds: 2
+permissions:
+  irreversible:
+    default: skip-and-record
+    allow:
+      - "git push origin mission/*"
+      - "gh pr create*"
+ambiguity_policy: choose-default-and-record
