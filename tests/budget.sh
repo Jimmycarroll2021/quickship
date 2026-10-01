@@ -26,7 +26,10 @@ TR="$T/sess.jsonl"
   echo '{"type":"assistant","message":{"id":"m2","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":2,"cache_creation_input_tokens":1}}}'
 } > "$TR"
 out="$(budget --transcript "$TR")"; out="${out//$'\r'/}"
-expect_contains "tokens summed from transcript" '"tokens": 10' "$out"
+# m1: 2+3; m2: 1+1+cache_creation 1 (cache_read 2 excluded from `tokens`, counted in tokens_total)
+expect_contains "tokens summed from transcript (cache reads excluded)" '"tokens": 8,' "$out"
+expect_contains "cache_read_tokens summed" '"cache_read_tokens": 2,' "$out"
+expect_contains "tokens_total includes cache reads" '"tokens_total": 10,' "$out"
 expect_contains "tokens exhausted" '"exhausted": ["tokens"]' "$out"
 expect_contains "limits echoed" '"steps": 10' "$out"
 out="$(budget --transcript "$TR" --exhausted-only)"; out="${out//$'\r'/}"
@@ -38,7 +41,7 @@ expect_contains "missing transcript counts 0 tokens" '"tokens": 0' "$OUT"
 echo '{"type":"assistant","message":{"id":"s1","model":"claude-haiku-4-5","usage":{"input_tokens":4,"output_tokens":1}}}' > "$T/sess-sub1.jsonl"
 echo '{"type":"assistant","message":{"id":"x1","usage":{"input_tokens":1000,"output_tokens":0}}}' > "$T/other.jsonl"
 out="$(budget --transcript "$TR")"; out="${out//$'\r'/}"
-expect_contains "sibling transcript summed, unrelated ignored" '"tokens": 15' "$out"
+expect_contains "sibling transcript summed, unrelated ignored" '"tokens": 13,' "$out"
 rm -f "$T/sess-sub1.jsonl" "$T/other.jsonl"
 
 # steps over limit
@@ -115,10 +118,30 @@ strip_elapsed() { sed -E 's/"elapsed_min": [0-9.]+, //'; }
 with_flag="$(budget --transcript "$TR" | strip_elapsed)"; with_flag="${with_flag//$'\r'/}"
 without_flag="$(budget | strip_elapsed)"; without_flag="${without_flag//$'\r'/}"
 [ "$with_flag" = "$without_flag" ] && ok "budget.py falls back to stored transcript_path" || bad "budget.py fallback mismatch ('$without_flag' vs '$with_flag')"
-expect_contains "fallback sums the fixture transcript" '"tokens": 10,' "$without_flag"
+expect_contains "fallback sums the fixture transcript" '"tokens": 8,' "$without_flag"
 
 # neither --transcript nor a stored transcript_path file: still works, reports 0 tokens
 rm -f "$S/transcript_path"
 out="$(budget)"; out="${out//$'\r'/}"
 expect_contains "no transcript anywhere: 0 tokens" '"tokens": 0' "$out"
+# --- cache reads: excluded from `tokens` (the budget dimension), priced in cost_usd, reported separately ---
+write_brief 50 100 1000 1000; echo 0 > "$S/steps"; rm -f "$S/started_at"
+CR="$T/cache.jsonl"
+echo '{"type":"assistant","message":{"id":"c1","model":"claude-sonnet-5","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}}}' > "$CR"
+out="$(budget --transcript "$CR")"; out="${out//$'\r'/}"
+expect_contains "cache fixture: tokens = input + output + cache_creation" '"tokens": 35,' "$out"
+expect_contains "cache fixture: cache_read_tokens reported" '"cache_read_tokens": 100,' "$out"
+expect_contains "cache fixture: tokens_total sums all four" '"tokens_total": 135,' "$out"
+# sonnet: (10*3 + 5*15 + 100*3*0.1 + 20*3*1.25) / 1e6 = 0.00021 -> rounded to 4 places
+expect_contains "cache fixture: cost prices reads at 10% and creation at 125%" '"cost_usd": 0.0002,' "$out"
+expect_contains "cache fixture: 35 < 50 not exhausted" '"exhausted": []' "$out"
+out="$(budget --transcript "$CR" --exhausted-only)"; out="${out//$'\r'/}"
+[ -z "$out" ] && ok "cache fixture: --exhausted-only prints nothing at limit 50" || bad "cache fixture: --exhausted-only at 50 (got '$out')"
+write_brief 30 100 1000 1000
+out="$(budget --transcript "$CR" --exhausted-only)"; out="${out//$'\r'/}"
+[ "$out" = "tokens" ] && ok "cache fixture: --exhausted-only prints tokens at limit 30" || bad "cache fixture: --exhausted-only at 30 (got '$out')"
+out="$(hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{},"transcript_path":"'"$CR"'"}')"
+out="${out//$'\r'/}"
+expect_contains "cache fixture: BUDGET line shows tokens=35/30" 'BUDGET tokens=35/30' "$out"
+rm -f "$S/transcript_path"
 finish
