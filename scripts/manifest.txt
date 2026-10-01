@@ -13,4 +13,5 @@ BRIEF.example.yaml
 docs/design/contracts.md
 .gitattributes
 run.cmd
+init.cmd
 VERSION
