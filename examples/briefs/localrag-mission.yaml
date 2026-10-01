@@ -1,0 +1,33 @@
+# A real application built unattended (2026-09-30): DONE in 96 minutes, 257 steps, about $3.40, PR with 2,134 lines added.
+# Copy localrag-notes.md to docs/BRIEF_NOTES.md in the target project before running; the goal points the lead at it.
+mission:
+  goal: "Build localrag, a CPU-only private RAG assistant over three PDFs (constraints in docs/BRIEF_NOTES.md): a uv-managed Python 3.13 package with a localrag CLI that downloads llama.cpp and small GGUF models, benchmarks candidate chat models, indexes PDFs into a sqlite vector index and answers questions with cited passages"
+  deliverables:
+    - pyproject.toml
+    - src/localrag/
+    - tests/
+    - eval/questions.yaml
+    - docs/RAG_SETUP.md
+success_criteria:
+  - {kind: test, cmd: "uv run pytest -q", expect: 0}
+  - {kind: test, cmd: "uv run localrag index --stats | grep -qi chunks", expect: 0}
+  - {kind: test, cmd: "uv run localrag ask 'Which book describes the agentic design patterns?' | grep -qi 'Agentic Design Patterns'", expect: 0}
+  - {kind: test, cmd: "uv run localrag ask 'Which book is about building LLM applications?' | grep -qi 'LLM'", expect: 0}
+  - {kind: test, cmd: "uv run localrag ask 'Which book covers prompt engineering?' | grep -qi 'Prompt'", expect: 0}
+  - {kind: file, path: docs/RAG_SETUP.md, must_contain: "tok/s"}
+  - {kind: judge, rubric: "Answers are grounded in the retrieved passages, every answer cites the source file and page, and the CLI refuses to answer when nothing relevant is retrieved"}
+budgets:
+  tokens: 12000000
+  cost_usd: 30
+  wall_clock_min: 150
+  steps: 500
+  stall_limit: 3
+  replan_limit: 5
+  critic_rounds: 2
+permissions:
+  irreversible:
+    default: skip-and-record
+    allow:
+      - "git push origin mission/*"
+      - "gh pr create*"
+ambiguity_policy: choose-default-and-record
