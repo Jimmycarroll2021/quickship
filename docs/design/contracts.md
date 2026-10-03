@@ -115,6 +115,8 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 
 `scripts/hooks/budget.sh` runs on PreToolUse and PostToolUse (matcher `.*`). No-op without brief.json. PostToolUse: increment `$S/steps`, then print additionalContext `BUDGET tokens=<n>/<limit> cost=<f>/<limit> min=<f>/<limit> steps=<n>/<limit>`. PreToolUse: if `exhausted` is non-empty, allow only `Read`, `Glob`, `Grep`, and `Write`/`Edit` whose `file_path` ends with `docs/REPORT.md` or `docs/RUN_STATE`; deny everything else with stderr `budget exhausted (<names>): write docs/RUN_STATE {"state":"DONE_PARTIAL"} and docs/REPORT.md, then stop`.
 
+`budget.py` also prints `near`: the dimensions at or past 85% of their limit but not over it. The lead treats a non-empty `near` as the signal to stop dispatching and go to synthesis, because `budget.sh` denies every tool call except the report files once a dimension is exhausted.
+
 ## Termination
 
 `docs/RUN_STATE` is exactly one line: `{"state": "DONE|DONE_PARTIAL|SAFE_STOP|HALT", "reason": "...", "at": "..."}`.

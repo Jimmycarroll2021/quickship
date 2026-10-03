@@ -159,11 +159,16 @@ def main():
     limits = {lim: budgets.get(lim, 0) for _, lim in DIMS}
     exhausted = [lim for key, lim in DIMS
                  if isinstance(limits[lim], (int, float)) and limits[lim] > 0 and vals[key] >= limits[lim]]
+    # near: at or past 85% of a limit but not over it; the lead's cue to finish the current task and go to synthesis
+    # (push, PR, report) while the budget hook still lets commands through
+    near = [lim for key, lim in DIMS
+            if isinstance(limits[lim], (int, float)) and limits[lim] > 0
+            and vals[key] < limits[lim] and vals[key] >= 0.85 * limits[lim]]
     if a.exhausted_only:
         if exhausted:
             print(",".join(exhausted))
     else:
-        print(json.dumps({**vals, "limits": limits, "exhausted": exhausted}))
+        print(json.dumps({**vals, "limits": limits, "exhausted": exhausted, "near": near}))
     return 0
 
 

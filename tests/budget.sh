@@ -50,6 +50,18 @@ echo 11 > "$S/steps"
 out="$(budget --exhausted-only)"; out="${out//$'\r'/}"
 [ "$out" = "steps" ] && ok "steps 11/10 exhausted" || bad "steps 11/10 exhausted (got '$out')"
 
+# near exhaustion (>= 85% of a limit, not yet over): the lead's cue to wrap up with a PR instead of being cut off
+echo 9 > "$S/steps"
+out="$(budget)"; out="${out//$''/}"
+expect_contains "steps 9/10: near lists steps" '"near": ["steps"]' "$out"
+expect_contains "steps 9/10: not exhausted" '"exhausted": []' "$out"
+echo 3 > "$S/steps"
+out="$(budget)"; out="${out//$''/}"
+expect_contains "steps 3/10: near is empty" '"near": []' "$out"
+echo 11 > "$S/steps"
+out="$(budget)"; out="${out//$''/}"
+expect_contains "steps 11/10: exhausted, not near" '"near": []' "$out"
+
 # PreToolUse gating while exhausted
 expect_exit "exhausted: Bash denied" 2 hook budget.sh "$(pre_bash "npm test")"
 expect_contains "deny reason names budget" "budget exhausted (steps)" "$OUT"
