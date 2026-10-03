@@ -214,6 +214,24 @@ quality:
         with patch.object(runner,'run',return_value='main'),self.assertRaises(ValueError):
             runner.publish(self.root,self.config,'main','abc')
 
+    def test_expired_publication_makes_no_provider_call(self):
+        self.config['deadline']=time.time()-1
+        with patch.object(runner,'run') as provider, self.assertRaisesRegex(ValueError,'deadline'):
+            runner.publish(self.root,self.config,'mission/test','abc')
+        provider.assert_not_called()
+
+    def test_publication_rechecks_deadline_between_calls(self):
+        self.b['permissions']['irreversible']['default']='allow'
+        calls=[]
+        def provider(args,root,**kw):
+            calls.append(args)
+            self.assertLessEqual(kw['timeout'],30)
+            self.config['deadline']=time.time()-1
+            return 'main'
+        with patch.object(runner,'run',side_effect=provider), self.assertRaisesRegex(ValueError,'deadline'):
+            runner.publish(self.root,self.config,'mission/test','abc')
+        self.assertEqual(len(calls),1)
+
 
 if __name__=='__main__':
     unittest.main()

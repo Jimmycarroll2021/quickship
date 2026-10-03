@@ -167,10 +167,15 @@ def verify_criteria(root, brief, config):
 
 
 def publish(root, config, branch, head):
+    def command(args, root, timeout=30):
+        if time.time() >= config["deadline"]:
+            raise ValueError("wall-clock deadline exceeded during publication")
+        return run(args, root, timeout=min(timeout, remaining(config)))
+
     brief = config["brief"]
     repository = config.get("repository")
     repo_flags = ["--repo", repository] if repository else []
-    base = brief["mission"].get("base") or run(["gh", "repo", "view", *([repository] if repository else []), "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], root)
+    base = brief["mission"].get("base") or command(["gh", "repo", "view", *([repository] if repository else []), "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], root)
     if branch == base or not re.fullmatch(r"mission/[a-z0-9][a-z0-9/-]*", branch):
         raise policy.Denied("publish requires a mission branch")
     policy.authorize("git push origin " + branch, brief)
@@ -184,10 +189,10 @@ def publish(root, config, branch, head):
             record = {"branch": branch, "base": base, "status": "pending"}
             runtime.put(db, "publication", record)
     # Reconcile remote state before every mutation, including crash recovery.
-    remote = run(["git", "ls-remote", "origin", "refs/heads/" + branch], root)
+    remote = command(["git", "ls-remote", "origin", "refs/heads/" + branch], root)
     if not remote or remote.split()[0] != head:
-        run(["git", "push", "origin", branch], root, timeout=remaining(config))
-    prs = json.loads(run(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
+        command(["git", "push", "origin", branch], root, timeout=remaining(config))
+    prs = json.loads(command(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
                          "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) > 1:
         raise ValueError("multiple matching PRs; refusing duplicate publication")
@@ -195,13 +200,13 @@ def publish(root, config, branch, head):
         body = runtime.state() / "pr-body.md"
         runtime.atomic(body, "Mission: " + brief["mission"]["goal"] +
                        "\n\nThe controller independently verified the final gate, success criteria, deliverables and security review.\n")
-        run(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
+        command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
              "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
-        prs = json.loads(run(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
+        prs = json.loads(command(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
                              "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) != 1 or prs[0]["headRefOid"] != head or prs[0]["headRefName"] != branch or prs[0]["baseRefName"] != base:
         raise ValueError("PR head/base/SHA verification failed")
-    remote = run(["git", "ls-remote", "origin", "refs/heads/" + branch], root)
+    remote = command(["git", "ls-remote", "origin", "refs/heads/" + branch], root)
     if not remote or remote.split()[0] != head:
         raise ValueError("remote branch SHA verification failed")
     record.update({"status": "verified", "head": head, "url": prs[0]["url"]})
@@ -258,6 +263,8 @@ def finalize(root, config):
         details["publication"] = publish(root, config, branch, head)
     except policy.Denied as exc:
         return finish(root, "DONE_PARTIAL", str(exc), details)
+    if time.time() >= config["deadline"]:
+        return finish(root, "DONE_PARTIAL", "deadline exceeded during publication", details)
     return finish(root, "DONE", "criteria, gate, security, branch and PR independently verified", details)
 
 
