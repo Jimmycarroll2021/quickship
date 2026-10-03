@@ -154,6 +154,14 @@ printf '{"mission":{"goal":"Goal A"},"budgets":{"replan_limit":3}}' > "$S/brief.
 rm -f "$D/RUN_STATE"; rm -rf "$D/runs"
 expect_exit "archive-stale: no RUN_STATE exits 0" 0 led archive-stale
 expect_contains "archive-stale: no RUN_STATE says current" "current" "$OUT"
+rm -f "$L/task.json" "$L/progress.jsonl"
+printf '{"state":"DONE_PARTIAL","reason":"ended before planning","at":"2026-09-30T11:00:00Z"}
+' > "$D/RUN_STATE"
+expect_exit "archive-stale: terminal RUN_STATE without ledgers exits 0" 0 led archive-stale
+expect_contains "archive-stale: terminal RUN_STATE without ledgers is archived" "archived" "$OUT"
+[ ! -e "$D/RUN_STATE" ] && ok "archive-stale: lone RUN_STATE moved" || bad "archive-stale: lone RUN_STATE moved"
+expect_contains "archive-stale: lone run dir named by date" "2026-09-30" "$(ls -d "$D"/runs/*/ | head -1)"
+rm -rf "$D/runs"
 reset "Goal A"
 printf '{"state":"DONE","reason":"x","at":"2026-09-30T12:00:00Z"}\n' > "$D/RUN_STATE"; echo report > "$D/REPORT.md"; echo plan > "$D/plan.md"
 printf 'sess-1' > "$S/session_id"; echo 40 > "$S/steps"; echo 2 > "$S/restarts"

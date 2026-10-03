@@ -37,9 +37,17 @@ expect_contains "resume uses the saved id" "sess-123" "$(cat "$d/stub.log")"
 expect_contains "restart counter is 2" "2" "$(cat "$d/.claude/state/restarts")"
 
 printf '{"state":"DONE","reason":"x","at":"2026-01-01T00:00:00Z"}' > "$d/docs/RUN_STATE"; : > "$d/stub.log"
-expect_exit "terminal RUN_STATE: exit 0 without claude" 0 run "$d"
+goal="$("$QS_PYTHON" -c 'import json; print(json.load(open(".claude/state/brief.json"))["mission"]["goal"])' 2>/dev/null || (cd "$d" && "$QS_PYTHON" -c 'import json; print(json.load(open(".claude/state/brief.json"))["mission"]["goal"])'))"
+"$QS_PYTHON" -c 'import json,sys; json.dump({"goal": sys.argv[1], "plan": [], "facts": [], "assumptions": [], "blocked": [], "replan_count": 0, "stall_count": 0, "is_complete": True}, open(sys.argv[2], "w"))' "$goal" "$d/docs/ledgers/task.json"
+expect_exit "terminal RUN_STATE with its ledgers: exit 0 without claude" 0 run "$d"
 expect_contains "terminal RUN_STATE: claude not called" "" "$(cat "$d/stub.log")"
-rm "$d/docs/RUN_STATE"
+# a terminal RUN_STATE with no ledgers (a run that ended before planning, or a tree where the ledgers were dropped)
+# cannot be resumed; it is archived and the run starts
+rm "$d/docs/ledgers/task.json"; : > "$d/stub.log"
+expect_exit "lone terminal RUN_STATE: run starts" 0 run "$d"
+expect_contains "lone terminal RUN_STATE: claude called" "-p" "$(cat "$d/stub.log")"
+expect_contains "lone terminal RUN_STATE: archived" "1" "$(ls -d "$d"/docs/runs/*/ 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$d/docs/RUN_STATE"
 
 echo 5 > "$d/.claude/state/restarts"; : > "$d/stub.log"
 expect_exit "restart limit: exit 3" 3 run "$d"

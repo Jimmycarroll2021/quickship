@@ -317,10 +317,12 @@ def cmd_archive_stale(a) -> int:
             old_goal = json.loads(task_path().read_text(encoding="utf-8")).get("goal")
         except json.JSONDecodeError:
             old_goal = None
-    if old_goal is None or old_goal == goal:
+    # Same goal with its ledgers = the run that just finished; leave it. A different goal, or a terminal state
+    # with no ledgers at all (a run that ended before planning), cannot be resumed and is archived.
+    if old_goal is not None and old_goal == goal:
         print("current")
         return 0
-    slug = re.sub(r"[^a-z0-9]+", "-", old_goal.lower()).strip("-")[:24].rstrip("-") or "run"
+    slug = re.sub(r"[^a-z0-9]+", "-", (old_goal or "run").lower()).strip("-")[:24].rstrip("-") or "run"
     at = re.sub(r"[^0-9A-Za-z]+", "-", str(state.get("at") or now())).strip("-")
     dest = docs / "runs" / f"{at}-{slug}"
     n = 1
