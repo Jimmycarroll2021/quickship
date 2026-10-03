@@ -12,6 +12,8 @@
 
 **quickship turns Claude Code into an unattended delivery team.** You write a short Mission Brief: the goal, the files you expect, how to tell it is done, and a budget. You run one command and walk away. quickship plans the work, runs parallel workers in git worktrees, merges, reviews and tests their output, and opens a pull request with a report. It asks no questions on the way.
 
+You can also start one step earlier. Write a paragraph about your idea, and quickship writes the PRD, splits the MVP into missions and ships them as a stack of pull requests. In one test, a paragraph became a working, tested CLI in 44 minutes, delivered as four pull requests.
+
 Most agent setups stall the moment the model wants a decision, or keep going after they should have stopped. quickship is built around three rules that make walking away safe:
 
 - **Nobody is asked anything mid-run.** Every ambiguous choice is resolved with a default and written down. Every risky action outside your brief is skipped and written down.
@@ -72,7 +74,15 @@ bash scripts/run.sh                             # walk away
 cat docs/REPORT.md                              # come back
 ```
 
-On Windows, open PowerShell and run `quickship\init.cmd C:\path\to\my-project`, then `.\run.cmd` in the project. Both wrappers find Git Bash for you.
+Or start from an idea instead of a brief:
+
+```bash
+cp IDEA.example.md IDEA.md && $EDITOR IDEA.md   # one paragraph: who it's for, what it does
+bash scripts/idea.sh                            # PRD + 2 to 5 mission briefs; read the PRD
+bash scripts/program.sh                         # runs the missions; you merge the PR stack
+```
+
+On Windows, open PowerShell and run `quickship\init.cmd C:\path\to\my-project`. Then use `.\run.cmd`, `.\idea.cmd` or `.\program.cmd` in the project. The wrappers find Git Bash for you.
 
 **Requirements:** `git`, Python 3.10 or newer, which needs only the standard library, the [`claude` CLI](https://docs.claude.com/en/docs/claude-code) logged in, and an authenticated [`gh`](https://cli.github.com) for the pull request step. You also need bash 4 or newer. On Windows that is Git Bash. macOS ships bash 3.2, so install a newer one with `brew install bash`. macOS isn't covered by CI yet.
 
