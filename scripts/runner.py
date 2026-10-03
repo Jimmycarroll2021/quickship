@@ -235,7 +235,7 @@ def finalize(root, config):
     if run(["git", "diff", "--name-only", "HEAD"], root):
         return finish(root, "DONE_PARTIAL", "uncommitted tracked changes remain", details)
     untracked = set(run(["git", "ls-files", "--others", "--exclude-standard"], root).splitlines())
-    if untracked - {"docs/RESULT.json", "docs/COMPLETION.json", "docs/RUN_STATE"}:
+    if untracked - {"docs/RESULT.json", "docs/COMPLETION.json", "docs/RUN_STATE", "docs/PROGRAM.md"}:
         return finish(root, "DONE_PARTIAL", "uncommitted project files remain", details)
     if time.time() >= config["deadline"]:
         return finish(root, "DONE_PARTIAL", "deadline exceeded during final verification", details)

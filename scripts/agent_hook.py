@@ -41,15 +41,18 @@ def handle(event):
         with runtime.transaction() as db:
             if not runtime.get(db, "agent:" + str(event.get("agent_id"))):
                 return 0
-            for match in re.finditer(r"^judge\s+(\d+):\s*(PASS|FAIL):\s*(.+)$", text, re.MULTILINE):
+            matches = list(re.finditer(r"^[ \t]*judge\s+(\d+):[ \t]*(PASS|FAIL)(?::[ \t]*(.*))?[ \t]*$", text, re.MULTILINE | re.IGNORECASE))
+            for position, match in enumerate(matches):
                 index = int(match[1])
                 criteria = brief["success_criteria"]
                 judges = [i for i, c in enumerate(criteria) if c["kind"] == "judge"]
                 # A sole judge numbered zero is unambiguous, even when a file/test precedes it.
                 if index == 0 and len(judges) == 1 and criteria[0]["kind"] != "judge":
                     index = judges[0]
-                if index < len(criteria) and criteria[index]["kind"] == "judge":
-                    runtime.put(db, "judge:" + str(index), {"verdict": match[2], "evidence": match[3],
+                end = matches[position + 1].start() if position + 1 < len(matches) else len(text)
+                evidence = (match[3] or text[match.end():end]).strip()
+                if evidence and index < len(criteria) and criteria[index]["kind"] == "judge":
+                    runtime.put(db, "judge:" + str(index), {"verdict": match[2].upper(), "evidence": evidence,
                         "rubric": criteria[index]["rubric"], "artifacts": artifacts(brief), "agent_id": event.get("agent_id")})
         return 0
     if event.get("agent_type") == "security":

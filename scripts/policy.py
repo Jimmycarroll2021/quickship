@@ -243,6 +243,8 @@ def check(event):
                     p = resolve_path(ts[1], cwd)
                     if not inside(p, runtime.root()):
                         raise Denied("script outside project")
+                    if p.parent == (runtime.root() / "scripts/hooks").resolve():
+                        raise Denied("hook recorders may only be invoked by the runtime")
                 if executable in ("python", "python3"):
                     if len(ts) < 2 or ts[1].startswith("-"):
                         raise Denied("inline interpreter disabled; use a project script")
@@ -251,8 +253,14 @@ def check(event):
                     if ts[1].replace("\\", "/").endswith("ledger.py") and agent in ("worker", "reviewer", "security"):
                         if len(ts) < 3 or ts[2] not in ("show", "step-bind"):
                             raise Denied(agent + " may not mutate shared ledgers")
-                    if ts[1].replace("\\", "/").endswith(("runner.py", "preflight.py")):
+                    if ts[1].replace("\\", "/").endswith(("runner.py", "preflight.py", "agent_hook.py", "budget_hook.py", "policy.py")):
                         raise Denied("controller may not be invoked by an agent")
+                    if ts[1].replace("\\", "/").endswith("ledger.py"):
+                        if "archive-stale" in ts:
+                            raise Denied("runtime archival belongs to the controller")
+                        if "init" in ts and (event.get("agent_id") or "--goal" not in ts or
+                                ts[ts.index("--goal") + 1:ts.index("--goal") + 2] != [brief["mission"]["goal"]]):
+                            raise Denied("ledger goal must match the frozen mission")
                     if ts[1].replace("\\", "/").endswith("brief.py") and "validate" in ts:
                         raise Denied("active brief is frozen; use brief.py check")
                 if executable == "git" and "-C" in ts:

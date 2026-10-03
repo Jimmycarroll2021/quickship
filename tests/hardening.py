@@ -107,6 +107,11 @@ class ReleaseTests(unittest.TestCase):
         for tool in ('Glob','Grep'):
             self.deny({'hook_event_name':'PreToolUse','tool_name':tool,'tool_input':{'path':'../','pattern':'*'},'cwd':str(self.root)})
 
+    def test_hook_evidence_and_archival_cannot_be_called_by_agent(self):
+        for cmd in ('python scripts/agent_hook.py', 'python scripts/policy.py', 'bash scripts/hooks/agents.sh',
+                    'python scripts/ledger.py archive-stale', 'python scripts/ledger.py init --goal replacement'):
+            self.deny(self.event(cmd))
+
     def test_directory_judge_evidence_changes_with_contents(self):
         (self.root/'src').mkdir();(self.root/'src/module.py').write_text('one')
         self.b['mission']['deliverables']=['src/']
@@ -387,6 +392,14 @@ class ReleaseTests(unittest.TestCase):
         self.register(aid='reviewer-1')
         agent_hook.handle({'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
                            'last_assistant_message':'PASS\njudge 0: PASS: hello'})
+        self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],2)
+
+    def test_actual_multiline_uppercase_judge_response(self):
+        self.b['success_criteria']=[{'kind':'file','path':'README.md'},{'kind':'judge','rubric':'README is accurate'}]
+        runtime.atomic(runtime.state()/'controller.json',self.config)
+        self.register(aid='reviewer-1')
+        agent_hook.handle({'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
+                           'last_assistant_message':'Findings: none.\n\nJUDGE 1: PASS\n\nEvidence:\n- README.md: hello'})
         self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],2)
 
     def test_deliverable_path_escape(self):
