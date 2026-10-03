@@ -173,7 +173,7 @@ In the localrag run the lead added the fourth task itself after a weak eval resu
 | `.claude/agents/` | Subagent definitions: planner, worker, researcher, reviewer, overseer. |
 | `.claude/settings.json` | Allow and deny rules plus the hook wiring; committed so it applies in fresh clones. |
 | `.claude/rules/` | Path-scoped rules (no secrets in tracked files). |
-| `tests/` | Harness self-tests, no LLM calls; `bash tests/run.sh` runs them all. |
+| `tests/` | Harness self-tests, no LLM calls; `bash tests/run.sh` runs them all. The gate runs them in the quickship repo itself; in an installed copy it skips them (they take minutes and test the harness, not your project), so run them once after `init.sh` or `--upgrade`, or set `QS_SELFTEST=1`. |
 | `examples/briefs/` | Worked briefs from real runs. |
 | `docs/design/contracts.md` | Contract for every file, script and hook. |
 | `docs/decisions.md` | Append-only decision log, one row per merge, assumption or blocked step. |

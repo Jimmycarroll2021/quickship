@@ -139,6 +139,9 @@ Run `init.sh` while no mission is active: it never touches `.claude/state/` or `
 bash tests/run.sh
 ```
 
+In an installed project the gate does not run these self-tests (they take minutes and test the harness, not your code). Run them by hand once after `init.sh` or `init.sh --upgrade`, or set `QS_SELFTEST=1` to make the gate include them.
+
+
 Runs every `tests/*.sh` in parallel (`QS_TEST_JOBS` sets the width), prints each file's output in name order, and exits 0 only when all pass. No test calls an LLM; `overseer.sh` is tested with a stub `claude` on `PATH`. Tests never touch the repo's own `.claude/state`; each one sets `CLAUDE_PROJECT_DIR` to a temp dir. `bash scripts/gate.sh` runs the same suite after the secrets scan, lint, test and build. On Windows run both from Git Bash with `QS_PYTHON` pointing at a Python 3.10+ interpreter if `python3` is not on `PATH`. CI runs the suite on Ubuntu and Windows (`.github/workflows/tests.yml`).
 
 ## Common failures
