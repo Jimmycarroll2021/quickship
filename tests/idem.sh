@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# PreToolUse/PostToolUse idempotency guard for `git push` and `gh pr|issue|release create`.
+# PreToolUse/PostToolUse idempotency guard for `git push`, `gh pr|issue|release create` and the
+# MCP `mcp__<server>__create_pull_request|create_issue|create_release` tools.
 source "$(dirname "$0")/lib.sh"
 export CLAUDE_PROJECT_DIR="$(tmpdir)"; mkdir -p "$CLAUDE_PROJECT_DIR/.claude/state"
 S="$CLAUDE_PROJECT_DIR/.claude/state"
@@ -109,13 +110,111 @@ expect_exit "quoted gh pr create spanning a newline does not match" 0 hook idem.
 ledger_after="$(wc -l < "$S/idem.jsonl" 2>/dev/null || echo 0)"
 [ "$ledger_before" = "$ledger_after" ] && ok "ledger not appended for newline/quoted command" || bad "ledger appended for newline/quoted command (before=$ledger_before after=$ledger_after)"
 
+# --- MCP tools: mcp__<server>__create_pull_request|create_issue|create_release are deduped
+# on (step id, tool name, head/base/title); anything else from an MCP server, and every
+# non-Bash tool, is a pure no-op. The settings.json matcher is widened to `Bash|mcp__.*`,
+# so idem.sh must accept any tool_name and exit 0 fast for the ones it does not handle. ---
+
+# mcp_json <event> <tool_name> <tool_input json> [<tool_response json>]
+mcp_json() {
+  local event=$1 tool=$2 input=$3 resp=${4:-}
+  if [ -n "$resp" ]; then
+    printf '{"hook_event_name":"%s","tool_name":"%s","tool_input":%s,"tool_response":%s}' "$event" "$tool" "$input" "$resp"
+  else
+    printf '{"hook_event_name":"%s","tool_name":"%s","tool_input":%s}' "$event" "$tool" "$input"
+  fi
+}
+# ledger_lines -> current line count of idem.jsonl (0 if absent)
+ledger_lines() { wc -l < "$S/idem.jsonl" 2>/dev/null || echo 0; }
+
+PR_INPUT='{"owner":"jimmy","repo":"quickship","head":"mission/x","base":"main","title":"t","body":"b"}'
+printf '{"id":"s001"}' > "$S/current_step.json"
+
+# first create_pull_request for step s001: allowed, pending line with the tool name + head
+expect_exit "mcp create_pull_request first allowed" 0 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$PR_INPUT")"
+assert_last_line "mcp pending line cmd/step" "mcp__github__create_pull_request head=mission/x base=main" "s001"
+expect_contains "mcp pending line has status pending" '"status": "pending"' "$(tail -n 1 "$S/idem.jsonl")"
+
+# PostToolUse with a normal response records done exit 0
+expect_exit "mcp create_pull_request post allowed" 0 hook idem.sh "$(mcp_json PostToolUse mcp__github__create_pull_request "$PR_INPUT" '{"content":[{"type":"text","text":"https://github.com/jimmy/quickship/pull/1"}]}')"
+expect_contains "mcp done line recorded" '"status": "done"' "$(tail -n 1 "$S/idem.jsonl")"
+expect_contains "mcp done line exit 0" '"exit": 0' "$(tail -n 1 "$S/idem.jsonl")"
+
+# a repeat with the same head/base/title in the same step is denied
+expect_exit "mcp create_pull_request repeat denied" 2 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$PR_INPUT")"
+expect_contains "mcp denial mentions already executed" "already executed" "$OUT"
+
+# the body is not part of the key: a changed body with the same head/base/title is still denied
+expect_exit "mcp repeat with different body still denied" 2 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request '{"head":"mission/x","base":"main","title":"t","body":"other"}')"
+
+# a different head is a different key: allowed
+expect_exit "mcp different head allowed" 0 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request '{"head":"mission/y","base":"main","title":"t"}')"
+assert_last_line "mcp different-head pending line" "mcp__github__create_pull_request head=mission/y base=main" "s001"
+
+# a different step id with the same input is a different key: allowed
+printf '{"id":"s002"}' > "$S/current_step.json"
+expect_exit "mcp different step allowed" 0 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$PR_INPUT")"
+assert_last_line "mcp different-step pending line" "mcp__github__create_pull_request head=mission/x base=main" "s002"
+
+# PostToolUse with isError true records done with exit 1. The contract is that a `done`
+# key is denied regardless of its exit code (the recorded result stands, the lead must
+# not retry), so the next PreToolUse for the same key is still denied.
+expect_exit "mcp post with isError recorded" 0 hook idem.sh "$(mcp_json PostToolUse mcp__github__create_pull_request "$PR_INPUT" '{"isError":true,"content":[{"type":"text","text":"422 A pull request already exists"}]}')"
+expect_contains "mcp isError done line has exit 1" '"exit": 1' "$(tail -n 1 "$S/idem.jsonl")"
+expect_contains "mcp isError done line has status done" '"status": "done"' "$(tail -n 1 "$S/idem.jsonl")"
+expect_exit "mcp repeat after isError still denied" 2 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$PR_INPUT")"
+expect_contains "mcp isError denial mentions already executed" "already executed" "$OUT"
+expect_contains "mcp isError denial reports exit 1" "(exit 1)" "$OUT"
+
+# snake_case is_error is honoured too; create_issue has no head/base, so those render empty
+printf '{"id":"s003"}' > "$S/current_step.json"
+expect_exit "mcp create_issue first allowed" 0 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_issue '{"title":"bug"}')"
+assert_last_line "mcp create_issue pending line (missing head/base -> empty)" "mcp__github__create_issue head= base=" "s003"
+expect_exit "mcp post with is_error recorded" 0 hook idem.sh "$(mcp_json PostToolUse mcp__github__create_issue '{"title":"bug"}' '{"is_error":true}')"
+expect_contains "mcp is_error done line has exit 1" '"exit": 1' "$(tail -n 1 "$S/idem.jsonl")"
+expect_exit "mcp create_issue repeat denied" 2 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_issue '{"title":"bug"}')"
+
+# the server segment is not fixed to github: mcp__other__create_pull_request is handled
+expect_exit "mcp__other__create_pull_request handled" 0 hook idem.sh "$(mcp_json PreToolUse mcp__other__create_pull_request "$PR_INPUT")"
+assert_last_line "mcp__other pending line" "mcp__other__create_pull_request head=mission/x base=main" "s003"
+expect_exit "mcp__other post recorded" 0 hook idem.sh "$(mcp_json PostToolUse mcp__other__create_pull_request "$PR_INPUT" '{"isError":false}')"
+expect_contains "mcp__other isError false records exit 0" '"exit": 0' "$(tail -n 1 "$S/idem.jsonl")"
+expect_exit "mcp__other repeat denied" 2 hook idem.sh "$(mcp_json PreToolUse mcp__other__create_pull_request "$PR_INPUT")"
+expect_exit "mcp__gitlab__create_release handled" 0 hook idem.sh "$(mcp_json PreToolUse mcp__gitlab__create_release '{"tag":"v1"}')"
+assert_last_line "mcp create_release pending line" "mcp__gitlab__create_release head= base=" "s003"
+
+# a read-only MCP tool is a no-op: exit 0, no new ledger line
+before="$(ledger_lines)"
+expect_exit "mcp get_file_contents is a no-op" 0 hook idem.sh "$(mcp_json PreToolUse mcp__github__get_file_contents '{"path":"README.md"}')"
+expect_exit "mcp get_file_contents post is a no-op" 0 hook idem.sh "$(mcp_json PostToolUse mcp__github__get_file_contents '{"path":"README.md"}' '{"content":[]}')"
+[ "$before" = "$(ledger_lines)" ] && ok "ledger not appended for read-only mcp tool" || bad "ledger appended for read-only mcp tool (before=$before after=$(ledger_lines))"
+
+# the suffix must be the whole final segment: create_pull_request_review / update_pull_request are not matched
+before="$(ledger_lines)"
+expect_exit "mcp create_pull_request_review is a no-op" 0 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request_review '{"pull_number":1}')"
+expect_exit "mcp update_pull_request is a no-op" 0 hook idem.sh "$(mcp_json PreToolUse mcp__github__update_pull_request "$PR_INPUT")"
+[ "$before" = "$(ledger_lines)" ] && ok "ledger not appended for near-miss mcp tool names" || bad "ledger appended for near-miss mcp tool names (before=$before after=$(ledger_lines))"
+
+# a non-Bash, non-MCP tool is a no-op: exit 0, no new ledger line
+before="$(ledger_lines)"
+expect_exit "Write tool is a no-op" 0 hook idem.sh "$(mcp_json PreToolUse Write '{"file_path":"x.txt","content":"gh pr create"}')"
+expect_exit "Read tool is a no-op" 0 hook idem.sh "$(mcp_json PreToolUse Read '{"file_path":"x.txt"}')"
+[ "$before" = "$(ledger_lines)" ] && ok "ledger not appended for Write/Read tools" || bad "ledger appended for Write/Read tools (before=$before after=$(ledger_lines))"
+
+# a Bash call that lacks tool_input.command is malformed: fail closed
+expect_exit "Bash without command fails closed" 2 hook idem.sh '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}'
+# an MCP create call whose tool_input is not an object is malformed: fail closed
+expect_exit "mcp create with non-object tool_input fails closed" 2 hook idem.sh "$(mcp_json PreToolUse mcp__github__create_pull_request '"nope"')"
+# garbage is still refused after the tool_name widening
+expect_exit "garbage stdin still fails closed" 2 hook idem.sh "{not json"
+
 # after every match above, no ledger line ever has its cmd/step fields shifted: cmd must
 # look like the matched subcommand it came from, and must never equal the step id.
 OUT="$("$QS_PYTHON" -c '
 import json, re, sys
 
 path = sys.argv[1]
-pattern = re.compile(r"^(git push\b|git -C \S+ push\b|gh (pr|issue|release) create\b)")
+pattern = re.compile(r"^(git push\b|git -C \S+ push\b|gh (pr|issue|release) create\b|mcp__[^_]\S*__(create_pull_request|create_issue|create_release) head=\S* base=\S*$)")
 bad_lines = []
 with open(path, encoding="utf-8") as f:
     for i, line in enumerate(f, 1):

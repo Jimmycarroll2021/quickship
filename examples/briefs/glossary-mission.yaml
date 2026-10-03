@@ -1,0 +1,24 @@
+# A small single-file mission with tight budgets: one new doc, deterministic criteria, one critic round.
+mission:
+  goal: "Add docs/GLOSSARY.md defining Mission Brief, Task Ledger, Progress Ledger, RUN_STATE and overseer in two sentences each"
+  deliverables:
+    - docs/GLOSSARY.md
+success_criteria:
+  - {kind: file, path: docs/GLOSSARY.md, must_contain: "Mission Brief"}
+  - {kind: file, path: docs/GLOSSARY.md, must_contain: "RUN_STATE"}
+  - {kind: test, cmd: "bash tests/diffbase.sh", expect: 0}
+budgets:
+  tokens: 3000000
+  cost_usd: 12
+  wall_clock_min: 60
+  steps: 120
+  stall_limit: 3
+  replan_limit: 3
+  critic_rounds: 1
+permissions:
+  irreversible:
+    default: skip-and-record
+    allow:
+      - "git push origin mission/*"
+      - "gh pr create*"
+ambiguity_policy: choose-default-and-record

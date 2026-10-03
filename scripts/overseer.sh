@@ -77,11 +77,16 @@ sys.stdout.write(text.lstrip("\n"))
   prompt="Overseer tick for the mission in this repository. Follow these instructions exactly:
 $agent_body"
 
+  # Allow list: file tools plus the single status script (and budget.py, which it wraps). The
+  # prompt never chains commands, so no `tail`, `date` or shell operators are needed. MCP is
+  # disabled outright: an overseer tick must not inherit the user's connectors.
   result="$(QS_ROLE=overseer claude -p "$prompt" \
     --max-turns 8 \
     --permission-mode acceptEdits \
     --permission-prompts none \
-    --allowedTools "Read,Glob,Grep,Edit(docs/overseer.md),Edit(.claude/state/force_replan),Edit(.claude/state/cancel),Bash(python3 scripts/budget.py *),Bash(python scripts/budget.py *),Bash(tail *)" \
+    --allowedTools "Read,Glob,Grep,Write,Edit,Bash(python3 scripts/overseer_status.py *),Bash(python scripts/overseer_status.py *),Bash(python3 scripts/budget.py *),Bash(python scripts/budget.py *)" \
+    --mcp-config '{"mcpServers":{}}' \
+    --strict-mcp-config \
     --output-format json)"
   exit_code=$?
 

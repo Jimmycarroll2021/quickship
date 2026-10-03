@@ -75,4 +75,21 @@ expect_contains "built-in reader: steps parsed as 400" '"steps": 400' "$c"
 expect_contains "built-in reader: cost_usd parsed as 40" '"cost_usd": 40' "$c"
 expect_contains "built-in reader: # inside quotes kept" 'issue #7' "$c"
 
+# --- a new goal is a new mission: validate resets the gitignored runtime state so a fresh run does not inherit
+# the previous run's clock, step count, session id or flags (seen when the tree was switched back to main) ---
+rm -f "$SJSON" "$STARTED"
+expect_exit "runtime reset: first validate" 0 py validate --brief "$BRIEF"
+printf '2020-01-01T00:00:00Z
+' > "$STARTED"; echo 57 > "$CLAUDE_PROJECT_DIR/.claude/state/steps"; printf 'old-sess' > "$CLAUDE_PROJECT_DIR/.claude/state/session_id"
+mkdir -p "$CLAUDE_PROJECT_DIR/.claude/state/legs"; echo outbound > "$CLAUDE_PROJECT_DIR/.claude/state/legs/s001"; touch "$CLAUDE_PROJECT_DIR/.claude/state/cancel"
+expect_exit "runtime reset: same goal keeps state" 0 py validate --brief "$BRIEF"
+expect_contains "runtime reset: same goal keeps started_at" "2020-01-01" "$(cat "$STARTED")"
+[ -f "$CLAUDE_PROJECT_DIR/.claude/state/session_id" ] && ok "runtime reset: same goal keeps session_id" || bad "runtime reset: same goal keeps session_id"
+NEWG="$CLAUDE_PROJECT_DIR/newgoal.yaml"; sed 's/^  goal: .*/  goal: "A different mission"/' "$BRIEF" > "$NEWG"
+expect_exit "runtime reset: new goal validates" 0 py validate --brief "$NEWG"
+expect_contains "runtime reset: new goal says so" "runtime state reset" "$OUT"
+expect_contains "runtime reset: started_at is fresh" "$(date -u +%Y-%m-%d)" "$(cat "$STARTED")"
+for f in steps session_id cancel legs; do [ ! -e "$CLAUDE_PROJECT_DIR/.claude/state/$f" ] && ok "runtime reset: $f removed" || bad "runtime reset: $f removed"; done
+expect_contains "runtime reset: brief.json has the new goal" "A different mission" "$(cat "$SJSON")"
+
 finish

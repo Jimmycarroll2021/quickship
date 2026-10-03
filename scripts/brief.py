@@ -311,6 +311,21 @@ def validate_structure(raw):
 
 # --- commands --------------------------------------------------------------
 
+RUNTIME_STATE = ("started_at", "session_id", "steps", "restarts", "stop_attempts", "idem.jsonl",
+                 "current_step.json", "tier", "cancel", "force_replan", "transcript_path", "last_run.json")
+
+
+def reset_runtime_state(sdir):
+    import shutil
+    for name in RUNTIME_STATE:
+        path = os.path.join(sdir, name)
+        if os.path.isfile(path):
+            os.remove(path)
+    legs = os.path.join(sdir, "legs")
+    if os.path.isdir(legs):
+        shutil.rmtree(legs)
+
+
 def cmd_validate(args):
     brief_path = args.brief or os.path.join(repo_root(), "BRIEF.yaml")
     try:
@@ -335,7 +350,21 @@ def cmd_validate(args):
     sdir = state_dir()
     os.makedirs(sdir, exist_ok=True)
 
+    # A new goal is a new mission. The runtime state under .claude/state is gitignored, so it survives a branch
+    # switch that removed the previous run's RUN_STATE from the tree; left in place it would hand the new run the
+    # old clock, step count, session id and flags. Same goal = resume, state untouched.
     out_path = brief_json_path()
+    previous_goal = None
+    if os.path.isfile(out_path):
+        try:
+            with open(out_path, "r", encoding="utf-8") as f:
+                previous_goal = (json.load(f).get("mission") or {}).get("goal")
+        except (OSError, ValueError, AttributeError):
+            previous_goal = None
+    if previous_goal is not None and previous_goal != normalized["mission"]["goal"]:
+        reset_runtime_state(sdir)
+        print("brief: new mission goal; runtime state reset")
+
     tmp_path = out_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(normalized, f, indent=2)

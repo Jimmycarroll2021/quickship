@@ -123,4 +123,99 @@ printf '{"id":"s020","slug":"x","legs":[]}' > "$S/current_step.json"
 expect_exit "backslash: PostToolUse read of work\_untrusted records leg" 0 hook guard.sh "$(file_json_py Read 'C:\repo\work\_untrusted\x.md' PostToolUse)"
 expect_contains "backslash: legs file has untrusted_content" "untrusted_content" "$(cat "$S/legs/s020" 2>/dev/null)"
 rm -f "$S/current_step.json"
+# ---- agent_type: the reviewer subagent is read-only and may run only inspection, test and eval commands ----
+# Fixtures carry a top-level agent_type (absent = lead). Built with json.dumps so $(...) and quotes survive.
+agent_bash_json() { "$QS_PYTHON" -c 'import json,sys; print(json.dumps({"hook_event_name":"PreToolUse","tool_name":"Bash","agent_type":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"; }
+agent_file_json() { "$QS_PYTHON" -c 'import json,sys; print(json.dumps({"hook_event_name":"PreToolUse","tool_name":sys.argv[2],"agent_type":sys.argv[1],"tool_input":{"file_path":sys.argv[3]}}))' "$1" "$2" "$3"; }
+echo act > "$S/tier"
+# allowed: inspection, the criteria checker, the project's test/eval runners, the gate, and reviewer.md's own diffbase line
+for cmd in "git diff --stat" "python3 scripts/check_criteria.py" "uv run localrag eval --min 12" "npm test" "pytest -q" "bash scripts/gate.sh" \
+           'base=$(bash scripts/diffbase.sh)' "git status --porcelain && git diff" "npm run lint" "cargo test"; do
+  expect_exit "reviewer allowed: $cmd" 0 hook guard.sh "$(agent_bash_json reviewer "$cmd")"
+done
+# denied: anything that changes git state, installs, writes through a redirect or tee
+for cmd in "git commit -m x" "git add -A" "npm install x" "cat a > b" "gh pr create --title x" "git diff | tee out.txt" \
+           "git -C .claude/worktrees/x merge feat/y" "git status && git checkout -b feat/z"; do
+  expect_exit "reviewer denied: $cmd" 2 hook guard.sh "$(agent_bash_json reviewer "$cmd")"
+done
+expect_exit "reviewer denied: git commit reason" 2 hook guard.sh "$(agent_bash_json reviewer "git commit -m x")"
+expect_contains "reviewer git deny reason" "reviewer never changes git state" "$OUT"
+expect_exit "reviewer denied: gh reason" 2 hook guard.sh "$(agent_bash_json reviewer "gh pr create --title x")"
+expect_contains "reviewer gh deny reason" "reviewer never changes git state" "$OUT"
+expect_exit "reviewer denied: npm install reason" 2 hook guard.sh "$(agent_bash_json reviewer "npm install x")"
+expect_contains "reviewer bash deny reason names the subcommand" "reviewer may only run read-only, test and eval commands (npm install x)" "$OUT"
+expect_exit "reviewer denied: Write src/a.ts" 2 hook guard.sh "$(agent_file_json reviewer Write "src/a.ts")"
+expect_contains "reviewer write deny reason" "reviewer is read-only" "$OUT"
+expect_exit "reviewer denied: Edit docs/REPORT.md" 2 hook guard.sh "$(agent_file_json reviewer Edit "docs/REPORT.md")"
+expect_exit "reviewer denied: MultiEdit docs/plan.md" 2 hook guard.sh "$(agent_file_json reviewer MultiEdit "docs/plan.md")"
+expect_exit "reviewer allowed: Read src/a.ts" 0 hook guard.sh "$(agent_file_json reviewer Read "src/a.ts")"
+# hard rules run first and still apply to the reviewer, with the hard-rule reason
+expect_exit "reviewer: force push still denied by hard rules" 2 hook guard.sh "$(agent_bash_json reviewer "git push --force origin main")"
+expect_contains "reviewer: force push reason is the hard rule" "force push" "$OUT"
+# a brief success criterion of kind test is allowed verbatim; nothing else under tools/ is, and args may not be added
+"$QS_PYTHON" -c 'import json,sys; json.dump({"success_criteria":[{"kind":"test","cmd":"bash tools/verify.sh --strict","expect":0},{"kind":"file","path":"README.md"},{"kind":"test","cmd":"","expect":0}]}, open(sys.argv[1],"w"))' "$S/brief.json"
+expect_exit "reviewer allowed: brief test criterion verbatim" 0 hook guard.sh "$(agent_bash_json reviewer "bash tools/verify.sh --strict")"
+expect_exit "reviewer allowed: brief criterion chained with inspection" 0 hook guard.sh "$(agent_bash_json reviewer "bash tools/verify.sh --strict && git status")"
+expect_exit "reviewer denied: non-criterion script" 2 hook guard.sh "$(agent_bash_json reviewer "bash tools/other.sh")"
+expect_exit "reviewer denied: criterion with extra args" 2 hook guard.sh "$(agent_bash_json reviewer "bash tools/verify.sh --strict --fix")"
+rm -f "$S/brief.json"
+expect_exit "reviewer denied: criterion command once the brief is gone" 2 hook guard.sh "$(agent_bash_json reviewer "bash tools/verify.sh --strict")"
+# the lead (no agent_type) and other subagents are unaffected
+expect_exit "lead: npm install allowed in act tier" 0 hook guard.sh "$(bash_json "npm install x")"
+expect_exit "lead: Write src allowed in act tier" 0 hook guard.sh "$(file_json Write "src/a.ts")"
+expect_exit "worker: npm install allowed in act tier" 0 hook guard.sh "$(agent_bash_json worker "npm install x")"
+rm -f "$S/tier"
+# ---- overseer role: may write only its note and the two flag files; bash only its status scripts and read-only commands ----
+ov_hook() { printf '%s' "$1" | env QS_ROLE=overseer bash "$ROOT/scripts/hooks/guard.sh"; }
+for f in "docs/overseer.md" ".claude/state/cancel" ".claude/state/force_replan" "/repo/.claude/state/cancel"; do
+  expect_exit "overseer write allowed: $f" 0 ov_hook "$(file_json Write "$f")"
+done
+expect_exit "overseer edit allowed: backslash docs\overseer.md" 0 ov_hook "$(file_json_py Edit 'C:\repo\docs\overseer.md')"
+for f in "docs/REPORT.md" "src/a.ts" "docs/RUN_STATE" ".claude/state/tier" "xdocs/overseer.md"; do
+  expect_exit "overseer write denied: $f" 2 ov_hook "$(file_json Write "$f")"
+done
+expect_contains "overseer write deny reason" "overseer may only write docs/overseer.md and the two flag files" "$OUT"
+for cmd in "python3 scripts/overseer_status.py" "python scripts/budget.py --exhausted-only" "git status --short" "tail -n 20 docs/ledgers/progress.jsonl" "git log --oneline | head -3"; do
+  expect_exit "overseer bash allowed: $cmd" 0 ov_hook "$(bash_json "$cmd")"
+done
+for cmd in "npm test" "git status && npm install" "rm -r build" "python3 scripts/other.py" "git checkout -b feat/z"; do
+  expect_exit "overseer bash denied: $cmd" 2 ov_hook "$(bash_json "$cmd")"
+done
+expect_exit "overseer read allowed" 0 ov_hook "$(file_json Read "docs/ledgers/task.json")"
+ov_hook "$(bash_json "git status --short")" >/dev/null 2>&1
+expect_contains "overseer calls are logged" $'Bash\tgit status --short' "$(tail -n 1 "$S/hook_log")"
+# ---- MCP tools: write-side GitHub tools are an outbound leg, read-side ones an untrusted_content leg, the rest none ----
+mcp_json() { "$QS_PYTHON" -c 'import json,sys; print(json.dumps({"hook_event_name":sys.argv[1],"tool_name":sys.argv[2],"tool_input":json.loads(sys.argv[3]),"tool_response":{}}))' "$1" "$2" "$3"; }
+pr_input='{"owner":"o","repo":"r","head":"mission/x","base":"main","title":"t"}'
+get_input='{"owner":"o","repo":"r","path":"README.md"}'
+printf '{"id":"s030","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "mcp: PostToolUse create_pull_request records leg" 0 hook guard.sh "$(mcp_json PostToolUse mcp__github__create_pull_request "$pr_input")"
+expect_contains "mcp: legs file has outbound" "outbound" "$(cat "$S/legs/s030" 2>/dev/null)"
+expect_exit "mcp: web fetch after mcp PR denied" 2 hook guard.sh "$(web_json PreToolUse)"
+expect_exit "mcp: get_file_contents after mcp PR denied" 2 hook guard.sh "$(mcp_json PreToolUse mcp__github__get_file_contents "$get_input")"
+expect_exit "mcp: unrelated mcp tool after mcp PR allowed" 0 hook guard.sh "$(mcp_json PreToolUse mcp__other__do_thing '{"x":1}')"
+printf '{"id":"s031","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "mcp: PostToolUse get_file_contents records leg" 0 hook guard.sh "$(mcp_json PostToolUse mcp__github__get_file_contents "$get_input")"
+expect_contains "mcp: legs file has untrusted_content" "untrusted_content" "$(cat "$S/legs/s031" 2>/dev/null)"
+expect_exit "mcp: git push after mcp read denied" 2 hook guard.sh "$(bash_json "git push origin mission/x")"
+expect_exit "mcp: create_pull_request after mcp read denied" 2 hook guard.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$pr_input")"
+expect_exit "mcp: list_issues after mcp read allowed (same leg)" 0 hook guard.sh "$(mcp_json PreToolUse mcp__github__list_issues '{"owner":"o","repo":"r"}')"
+printf '{"id":"s032","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "mcp: PostToolUse unrelated tool records nothing" 0 hook guard.sh "$(mcp_json PostToolUse mcp__other__do_thing '{"x":1}')"
+if [ ! -s "$S/legs/s032" ]; then ok "mcp: no leg recorded for unrelated tool"; else bad "mcp: leg recorded for unrelated tool: $(cat "$S/legs/s032")"; fi
+expect_exit "mcp: create_pull_request in a fresh step allowed" 0 hook guard.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$pr_input")"
+expect_contains "mcp: hook_log arg is the head/base/title summary" $'mcp__github__create_pull_request\thead=mission/x base=main title=t' "$(tail -n 1 "$S/hook_log")"
+rm -f "$S/current_step.json"
+# ---- DENY log: a denied call leaves exactly one five-field line  <utc ts>\tDENY\t<tool>\t<reason>\t<arg> ----
+before="$(wc -l < "$S/hook_log")"
+hook guard.sh "$(bash_json "git push origin main")" >/dev/null 2>&1
+after="$(wc -l < "$S/hook_log")"; last="$(tail -n 1 "$S/hook_log")"
+if [ "$((after - before))" = 1 ]; then ok "deny log: one line per denied call"; else bad "deny log: $((after - before)) lines for one denied call"; fi
+expect_contains "deny log: DENY marker, tool, reason and arg" $'\tDENY\tBash\tpush to main\tgit push origin main' "$last"
+if [[ "$last" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'\t' ]]; then ok "deny log: starts with a utc timestamp"; else bad "deny log: no timestamp: $last"; fi
+if [ "$(printf '%s\n' "$last" | awk -F'\t' '{print NF}')" = 5 ]; then ok "deny log: five tab-separated fields"; else bad "deny log: field count: $last"; fi
+hook guard.sh "$(bash_json "git status")" >/dev/null 2>&1
+if [ "$(tail -n 1 "$S/hook_log" | awk -F'\t' '{print NF}')" = 3 ]; then ok "deny log: allowed call keeps three fields"; else bad "deny log: allowed line: $(tail -n 1 "$S/hook_log")"; fi
+hook guard.sh "$(agent_file_json reviewer Write "src/a.ts")" >/dev/null 2>&1
+expect_contains "deny log: reviewer deny recorded" $'\tDENY\tWrite\treviewer is read-only\tsrc/a.ts' "$(tail -n 1 "$S/hook_log")"
 finish

@@ -7,6 +7,15 @@ transcript JSONL plus sibling <stem>*.jsonl files (subagent transcripts, best ef
 When --transcript is omitted, falls back to the path remembered in $S/transcript_path
 (written by scripts/hooks/budget.sh, the only caller that is ever told the path).
 Prints the budget JSON, or with --exhausted-only the comma-separated exhausted names. Exit 0.
+
+Token definition (the `tokens` dimension checked against budgets.tokens):
+    tokens = input_tokens + output_tokens + cache_creation_input_tokens
+cache_read_input_tokens are excluded: a cache read re-serves context that was already paid for and
+counted when it was created, and it is billed at 10% of the input rate. Counting it made a real run
+show 7.5M of an 8M token budget at $3.40 of cost, so the token budget tripped on re-reads rather than
+on new work. Cache reads are still reported as `cache_read_tokens`, and `tokens_total` (all four
+counters summed, the pre-change meaning of `tokens`) is kept for the report. cost_usd is unchanged:
+reads at 10% and creation at 125% of the model's input rate.
 """
 import argparse
 import datetime as dt
@@ -78,7 +87,8 @@ def transcript_files(path):
 
 
 def usage(path):
-    tokens, cost, budget, seen = 0, 0.0, MAX_BYTES, set()
+    """Return (tokens, cache_read_tokens, cost_usd); see the module docstring for what `tokens` counts."""
+    tokens, cache_read, cost, budget, seen = 0, 0, 0.0, MAX_BYTES, set()
     for p in transcript_files(path):
         try:
             f = open(p, "rb")
@@ -88,7 +98,7 @@ def usage(path):
             for raw in f:
                 budget -= len(raw)
                 if budget < 0:
-                    return tokens, cost
+                    return tokens, cache_read, cost
                 try:
                     msg = json.loads(raw).get("message") or {}
                     u = msg.get("usage")
@@ -106,9 +116,10 @@ def usage(path):
                 except (ValueError, TypeError, AttributeError):
                     continue
                 rin, rout = rates_for(msg.get("model"))
-                tokens += i + o + cr + cc
+                tokens += i + o + cc   # cache reads excluded from the budgeted dimension
+                cache_read += cr
                 cost += (i * rin + o * rout + cr * rin * 0.1 + cc * rin * 1.25) / 1e6
-    return tokens, cost
+    return tokens, cache_read, cost
 
 
 def elapsed_min(started_at):
@@ -140,17 +151,24 @@ def main():
     except ValueError:
         steps = 0
     transcript = a.transcript or normalize_path(read_text(os.path.join(s, "transcript_path"))) or None
-    tokens, cost = usage(transcript)
-    vals = {"tokens": tokens, "cost_usd": round(cost, 4),
+    tokens, cache_read, cost = usage(transcript)
+    # existing fields keep their names: budget.sh reads tokens/cost_usd/elapsed_min/steps by name
+    vals = {"tokens": tokens, "cache_read_tokens": cache_read, "tokens_total": tokens + cache_read,
+            "cost_usd": round(cost, 4),
             "elapsed_min": round(elapsed_min(read_text(os.path.join(s, "started_at"))), 1), "steps": steps}
     limits = {lim: budgets.get(lim, 0) for _, lim in DIMS}
     exhausted = [lim for key, lim in DIMS
                  if isinstance(limits[lim], (int, float)) and limits[lim] > 0 and vals[key] >= limits[lim]]
+    # near: at or past 85% of a limit but not over it; the lead's cue to finish the current task and go to synthesis
+    # (push, PR, report) while the budget hook still lets commands through
+    near = [lim for key, lim in DIMS
+            if isinstance(limits[lim], (int, float)) and limits[lim] > 0
+            and vals[key] < limits[lim] and vals[key] >= 0.85 * limits[lim]]
     if a.exhausted_only:
         if exhausted:
             print(",".join(exhausted))
     else:
-        print(json.dumps({**vals, "limits": limits, "exhausted": exhausted}))
+        print(json.dumps({**vals, "limits": limits, "exhausted": exhausted, "near": near}))
     return 0
 
 

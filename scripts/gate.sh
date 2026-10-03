@@ -64,8 +64,16 @@ else
   echo "gate: WARNING no stack detected (no package.json/pyproject.toml/requirements.txt); only secrets scan ran" >&2
 fi
 
-# --- repo acceptance tests (no LLM calls) ---
-[ -f tests/run.sh ] && run tests bash tests/run.sh
+# --- harness self-tests (no LLM calls): run in the quickship repo itself. An installed copy (.quickship/VERSION
+# present) skips them: they take minutes, test the harness rather than the project, and a lead and a worker running
+# them at once can push one past the gate timeout. QS_SELFTEST=1 forces them. ---
+if [ -f tests/run.sh ]; then
+  if [ -f .quickship/VERSION ] && [ "${QS_SELFTEST:-0}" != 1 ]; then
+    echo "gate: harness self-tests skipped in an installed copy (QS_SELFTEST=1 runs them)" >&2
+  else
+    run tests bash tests/run.sh
+  fi
+fi
 
 if [ ${#failures[@]} -gt 0 ]; then
   echo "gate: FAIL" >&2

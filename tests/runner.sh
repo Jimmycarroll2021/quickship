@@ -47,22 +47,30 @@ write_test "$d" cc.sh 0 "cc ok"
 expect_exit "all passing: exit 0" 0 bash -c "cd '$d' && bash tests/run.sh"
 expect_contains "all passing: last line is tests: PASS" "tests: PASS" "$(printf '%s\n' "$OUT" | tail -n 1)"
 
-# --- real concurrency: two 3s tests run in parallel under QS_TEST_JOBS=2, meaningfully faster than
-# running them one at a time (QS_TEST_JOBS=1) measured in the same run, so this holds under machine load too ---
+# --- real concurrency: under QS_TEST_JOBS=2 two tests overlap in time. Each test records when it starts and
+# ends; the proof is that the second starts before the first ends. No wall-clock thresholds, so machine load
+# (the gate runs sixteen test files at once, one of which runs a nested full suite) cannot make this flaky ---
 d="$(mkfixture)"
-write_test "$d" s1.sh 0 "s1 ok" 3
-write_test "$d" s2.sh 0 "s2 ok" 3
-start=$(date +%s)
-(cd "$d" && QS_TEST_JOBS=1 bash tests/run.sh) >/dev/null 2>&1
-serial=$(( $(date +%s) - start ))
-start=$(date +%s)
+write_stamp_test() { # write_stamp_test <dir> <name>: records start/end nanoseconds in <dir>/<name>.start|.end
+  printf '#!/usr/bin/env bash\ndate +%%s%%N > "%s/%s.start"; sleep 2; date +%%s%%N > "%s/%s.end"; echo "%s ok"; exit 0\n' \
+    "$1" "$2" "$1" "$2" "$2" > "$1/tests/$2.sh"
+  chmod +x "$1/tests/$2.sh"
+}
+write_stamp_test "$d" s1; write_stamp_test "$d" s2
 (cd "$d" && QS_TEST_JOBS=2 bash tests/run.sh) >/dev/null 2>&1
-parallel=$(( $(date +%s) - start ))
-# relative only: real overlap saves about one test's 3s whatever the machine load, an absolute bound does not hold under load
-if [ "$parallel" -le $(( serial - 2 )) ]; then
-  ok "QS_TEST_JOBS=2 runs two 3s tests concurrently (parallel=${parallel}s < serial=${serial}s)"
+s1s=$(cat "$d/s1.start" 2>/dev/null); s1e=$(cat "$d/s1.end" 2>/dev/null); s2s=$(cat "$d/s2.start" 2>/dev/null); s2e=$(cat "$d/s2.end" 2>/dev/null)
+if [ -n "$s1e" ] && [ -n "$s2s" ] && [ -n "$s2e" ] && [ "$s2s" -lt "$s1e" ] && [ "$s1s" -lt "$s2e" ]; then
+  ok "QS_TEST_JOBS=2 runs two tests concurrently (their intervals overlap)"
 else
-  bad "QS_TEST_JOBS=2 runs two 3s tests concurrently (parallel=${parallel}s, serial=${serial}s)"
+  bad "QS_TEST_JOBS=2 runs two tests concurrently (s1 $s1s-$s1e, s2 $s2s-$s2e)"
+fi
+rm -f "$d/s1.start" "$d/s1.end" "$d/s2.start" "$d/s2.end"
+(cd "$d" && QS_TEST_JOBS=1 bash tests/run.sh) >/dev/null 2>&1
+s1e=$(cat "$d/s1.end" 2>/dev/null); s2s=$(cat "$d/s2.start" 2>/dev/null)
+if [ -n "$s1e" ] && [ -n "$s2s" ] && [ "$s2s" -ge "$s1e" ]; then
+  ok "QS_TEST_JOBS=1 runs tests one at a time (s2 started after s1 ended)"
+else
+  bad "QS_TEST_JOBS=1 runs tests one at a time (s1 end $s1e, s2 start $s2s)"
 fi
 
 finish

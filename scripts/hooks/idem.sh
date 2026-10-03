@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# PreToolUse/PostToolUse idempotency guard for Bash: `git push` and `gh pr|issue|release create`.
+# PreToolUse/PostToolUse idempotency guard. Handles two tool shapes:
+#   Bash: `git push` and `gh pr|issue|release create` subcommands (keyed on the normalised text).
+#   MCP:  `mcp__<server>__create_pull_request|create_issue|create_release` (keyed on the tool
+#         name plus the `head`, `base`, `title` fields of tool_input), which is how a cloud
+#         session without `gh` opens a PR.
 # Stops the lead from retrying a push/create that already ran to completion for the current step.
+# The settings.json matcher is `Bash|mcp__.*`, so any tool_name may arrive: anything not handled
+# above is a no-op (exit 0, no ledger line). A `done` key is denied regardless of its recorded
+# exit code: the recorded result stands even when the call errored, because retrying a create
+# that may have half-succeeded is exactly the duplicate this hook exists to prevent.
 # Input: hook JSON on stdin. Fails closed: malformed input -> exit 2. See
 # docs/design/contracts.md "Idempotency".
 set -u
@@ -21,6 +29,48 @@ import hashlib, json, os, re, shlex, sys
 try:
     d = json.load(sys.stdin)
     event = d["hook_event_name"]
+    tool = d.get("tool_name", "Bash")
+except Exception:
+    sys.exit(1)
+if not isinstance(tool, str):
+    sys.exit(1)
+
+MCP_CREATE = re.compile(r"^mcp__[^_].*__(create_pull_request|create_issue|create_release)$")
+
+def read_step():
+    try:
+        with open(os.path.join(os.environ["IDEM_STATE"], "current_step.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and data.get("id"):
+            return str(data["id"])
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return "nostep"
+
+if tool != "Bash":
+    if not MCP_CREATE.match(tool):
+        # Any other tool (Write, Read, a read-only MCP tool, ...) is a pure no-op.
+        print(json.dumps({"match": False}))
+        sys.exit(0)
+    ti = d.get("tool_input")
+    if not isinstance(ti, dict):
+        sys.exit(1)
+    fields = {}
+    for k in ("head", "base", "title"):
+        v = ti.get(k, "")
+        fields[k] = v if isinstance(v, str) else ("" if v is None else str(v))
+    code = 0
+    if event == "PostToolUse":
+        resp = d.get("tool_response")
+        if isinstance(resp, dict) and (resp.get("isError") is True or resp.get("is_error") is True):
+            code = 1
+    step = read_step()
+    key = hashlib.sha256((step + "\n" + tool + ":" + json.dumps(fields, sort_keys=True)).encode("utf-8")).hexdigest()
+    cmd = tool + " head=" + fields["head"] + " base=" + fields["base"]
+    print(json.dumps({"match": True, "event": event, "key": key, "step": step, "cmd": cmd, "exit": code}))
+    sys.exit(0)
+
+try:
     cmd = d["tool_input"]["command"]
 except Exception:
     sys.exit(1)
@@ -121,15 +171,7 @@ if matched_norm is None:
     print(json.dumps({"match": False}))
     sys.exit(0)
 
-step = "nostep"
-try:
-    with open(os.path.join(os.environ["IDEM_STATE"], "current_step.json"), encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, dict) and data.get("id"):
-        step = str(data["id"])
-except (FileNotFoundError, ValueError, OSError):
-    pass
-
+step = read_step()
 key = hashlib.sha256((step + "\n" + matched_norm).encode("utf-8")).hexdigest()
 print(json.dumps({"match": True, "event": event, "key": key, "step": step, "cmd": matched_norm, "exit": code}))
 ' 2>/dev/null)"

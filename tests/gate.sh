@@ -23,4 +23,21 @@ rm "$clean/untracked.txt"; printf 'see %s%s\n' sk-ant- api03-abcdefghijklmnopqrs
 expect_exit "sk-ant key in untracked file: exit 2" 2 bash -c "cd '$clean' && bash scripts/gate.sh"
 rm "$clean/notes.md"; echo "the task-list uses sk-slugs-like-this-one-here-ok" > "$clean/prose.md"
 expect_exit "prose with sk- prefix is not a secret" 0 bash -c "cd '$clean' && bash scripts/gate.sh"
+# --- harness self-tests run in the quickship repo itself, not in an installed copy (.quickship/VERSION present):
+# they take minutes, test the harness rather than the project, and two of them in parallel (lead + worker) time out
+# a 30-minute mission. QS_SELFTEST=1 forces them. The stub leaves a marker file because the gate swallows the
+# output of a passing step. ---
+inst="$(tmpdir)"; mk "$inst"
+mkdir -p "$inst/tests"; printf '#!/usr/bin/env bash
+touch selftests_ran; exit 0
+' > "$inst/tests/run.sh"
+(cd "$inst" && bash scripts/gate.sh >/dev/null 2>&1)
+[ -f "$inst/selftests_ran" ] && ok "no .quickship: self-tests run" || bad "no .quickship: self-tests did not run"
+rm -f "$inst/selftests_ran"; mkdir -p "$inst/.quickship"; echo 0.1.0 > "$inst/.quickship/VERSION"
+OUT="$(cd "$inst" && bash scripts/gate.sh 2>&1)"; got=$?
+[ "$got" = 0 ] && ok "installed copy: gate passes" || bad "installed copy: gate exit $got"
+expect_contains "installed copy: self-tests skipped with a notice" "self-tests skipped" "$OUT"
+[ -f "$inst/selftests_ran" ] && bad "installed copy: self-tests must not run" || ok "installed copy: self-tests did not run"
+(cd "$inst" && QS_SELFTEST=1 bash scripts/gate.sh >/dev/null 2>&1)
+[ -f "$inst/selftests_ran" ] && ok "installed copy: QS_SELFTEST=1 runs them" || bad "installed copy: QS_SELFTEST=1 did not run them"
 finish
