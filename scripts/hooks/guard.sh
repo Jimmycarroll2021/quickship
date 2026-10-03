@@ -40,7 +40,7 @@ split_subcmds() {
     seg="${seg#"${seg%%[![:space:]]*}"}"; [ -z "$seg" ] && continue
     while [[ "$seg" =~ $opt_re ]]; do seg="${seg/"${BASH_REMATCH[0]}"/${BASH_REMATCH[1]}git }"; done
     SEGS+=("$seg")
-  done < <(printf '%s\n' "$raw" | sed -E 's/(&&|\|\||\|&|;|\|)/\n/g')
+  done < <(printf '%s' "$in" | "$PY" "$(dirname "$0")/../policy.py" --segments | tr -d '\r')
 }
 [ "$tool" = Bash ] && split_subcmds
 deny() {

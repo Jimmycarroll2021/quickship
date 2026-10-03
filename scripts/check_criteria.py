@@ -30,7 +30,7 @@ def find_root():
     if env:
         return Path(env)
     try:
-        proc = subprocess.Popen(
+        proc = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
@@ -56,10 +56,10 @@ def run_test(criterion, cwd):
     cmd = criterion["cmd"]
     expect = criterion.get("expect", 0)
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [BASH, "-c", cmd],
             cwd=str(cwd),
-            capture_output=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
             start_new_session=os.name != "nt",
         )

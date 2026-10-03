@@ -315,6 +315,10 @@ def harness_file(rel):
 def main():
     try:
         event = json.load(sys.stdin)
+        if "--segments" in sys.argv:
+            for tokens in argv_segments(event["tool_input"]["command"], runtime.active()):
+                print(shlex.join(tokens))
+            return 0
         check(event)
         return 0
     except (Denied, ValueError, KeyError, TypeError, OSError) as e:

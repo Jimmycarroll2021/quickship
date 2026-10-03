@@ -58,6 +58,7 @@ expect_exit "plan tier: allow write ledgers" 0 hook guard.sh "$(file_json Edit "
 expect_exit "plan tier: allow git status" 0 hook guard.sh "$(bash_json "git status --short")"
 expect_exit "plan tier: allow planner dispatch" 0 hook guard.sh '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"planner","prompt":"Plan the registered task"}}'
 expect_exit "plan tier: allow ledger.py" 0 hook guard.sh "$(bash_json "python3 scripts/ledger.py append note x y")"
+expect_exit "plan tier: quoted semicolon stays inside ledger argument" 0 hook guard.sh "$(bash_json "python3 scripts/ledger.py append note x 'planning; still one argument'")"
 expect_exit "plan tier: allow read-only pipe" 0 hook guard.sh "$(bash_json "git log --oneline | head -5")"
 echo act > "$S/tier"
 expect_exit "act tier: allow bash npm test" 0 hook guard.sh "$(bash_json "npm test")"
