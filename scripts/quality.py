@@ -63,6 +63,10 @@ def docs_only(root, brief):
     changed.update(git(root, "diff", "--name-only", "HEAD").splitlines())
     changed.update(git(root, "ls-files", "--others", "--exclude-standard").splitlines())
     for name in changed:
+        parts = Path(name).parts
+        if parts[:2] == ("docs", "runs") and len(parts) >= 4 and parts[-1] in (
+                "RESULT.json", "COMPLETION.json", "RUN_STATE", "task.json", "facts.json", "progress.jsonl", "criteria.json"):
+            continue
         if name in ("docs/RESULT.json", "docs/COMPLETION.json", "docs/RUN_STATE",
                     "docs/ledgers/task.json", "docs/ledgers/facts.json", "docs/ledgers/progress.jsonl",
                     "docs/ledgers/criteria.json") or name == "BRIEF.yaml":

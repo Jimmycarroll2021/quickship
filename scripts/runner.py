@@ -18,6 +18,7 @@ import preflight
 import policy
 import budget
 import check_criteria
+import agent_hook
 
 EXITS = {"DONE": 0, "DONE_PARTIAL": 3, "SAFE_STOP": 3, "HALT": 4, "ERROR": 5}
 
@@ -137,11 +138,12 @@ def verify_criteria(root, brief, config):
     results = []
     for index, criterion in enumerate(brief["success_criteria"]):
         if criterion["kind"] == "judge":
-            grade = old["results"][index] if index < len(old["results"]) else {}
-            status = grade.get("status")
-            detail = grade.get("detail", "")
-            if grade.get("kind") != "judge" or status not in ("pass", "fail") or "; evidence: " not in detail:
-                status, detail = "fail", "judge has no evidenced verdict"
+            with runtime.transaction() as db:
+                grade = runtime.get(db, "judge:" + str(index), {})
+            status, detail = "fail", "judge has no matching actual reviewer evidence"
+            if grade.get("rubric") == criterion["rubric"] and grade.get("artifacts") == agent_hook.artifacts(brief) and grade.get("evidence"):
+                status = "pass" if grade["verdict"] == "PASS" else "fail"
+                detail = grade["verdict"] + "; evidence: " + grade["evidence"]
         else:
             check_criteria.TEST_TIMEOUT_S = min(600, remaining(config))
             status, detail = check_criteria.evaluate(criterion, root)

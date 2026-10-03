@@ -1,14 +1,42 @@
 """Record security-agent evidence independently of the lead."""
 import json
+import hashlib
+import re
 import subprocess
 import sys
 import runtime
 
 
+def artifacts(brief):
+    result = {}
+    root = runtime.root()
+    for name in brief["mission"]["deliverables"]:
+        path = (root / name).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise ValueError("missing or outside-project review artifact")
+        result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
 def handle(event):
     if not runtime.active():
         return 0
-    if event.get("hook_event_name") == "SubagentStop" and event.get("agent_type") == "security":
+    if event.get("hook_event_name") != "SubagentStop":
+        return 0
+    if event.get("agent_type") == "reviewer":
+        brief = runtime.load(runtime.state() / "controller.json")["brief"]
+        text = event.get("last_assistant_message", "")
+        with runtime.transaction() as db:
+            if not runtime.get(db, "agent:" + str(event.get("agent_id"))):
+                return 0
+            for match in re.finditer(r"^judge\s+(\d+):\s*(PASS|FAIL):\s*(.+)$", text, re.MULTILINE):
+                index = int(match[1])
+                criteria = brief["success_criteria"]
+                if index < len(criteria) and criteria[index]["kind"] == "judge":
+                    runtime.put(db, "judge:" + str(index), {"verdict": match[2], "evidence": match[3],
+                        "rubric": criteria[index]["rubric"], "artifacts": artifacts(brief), "agent_id": event.get("agent_id")})
+        return 0
+    if event.get("agent_type") == "security":
         text = event.get("last_assistant_message", "")
         sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=runtime.root(),
                              capture_output=True, text=True, check=True).stdout.strip()

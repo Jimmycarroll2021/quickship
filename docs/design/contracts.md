@@ -6,7 +6,8 @@ The supported entrypoint remains `bash scripts/run.sh` / `run.cmd`; it delegates
 Runtime schema is 3. The controller freezes the validated brief and harness hashes, enforces an absolute
 deadline across resumes, and alone publishes. Agents submit `docs/RESULT.json` (`state`: READY,
 DONE_PARTIAL, SAFE_STOP or HALT; `reason`: string). They do not write the authoritative RUN_STATE.
-The security agent's actual SubagentStop response is recorded by the hook, not supplied by the lead.
+Actual security responses and reviewer judge grades are captured by SubagentStop hooks, not supplied by the lead.
+Judge evidence must match the frozen rubric and the current deliverable hashes; security must match the commit at binding and completion.
 DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
 security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
 Exit codes: 0 verified DONE; 2 invalid preflight/brief; 3 partial/safe stop; 4 HALT; 5 controller failure.
@@ -15,7 +16,8 @@ Exit codes: 0 verified DONE; 2 invalid preflight/brief; 3 partial/safe stop; 4 H
 a shell command string or `{skip: "human supplied reason"}`. Node defaults are the package-manager scripts;
 Python defaults are Ruff, pytest and build when a build system exists. Missing required checks fail.
 An unsupported code stack requires all three explicit entries. Docs mode permits only documentation changes.
-`maintenance: true` permits task-worktree edits to harness files; active main-checkout safeguards stay frozen.
+`maintenance: true` permits staging owned task-worktree edits to harness files. Changing the active main-checkout harness halts publication.
+Apply reviewed harness updates outside an active run, then start a fresh run with the updated safeguards.
 Cost figures are API-equivalent estimates for subscription accounts. API-authenticated sessions also receive
 the remaining `--max-budget-usd`; subscription sessions never switch billing or enable usage credits.
 

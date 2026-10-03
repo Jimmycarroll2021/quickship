@@ -173,7 +173,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "security",
+        "matcher": "reviewer|security",
         "hooks": [
           {
             "type": "command",

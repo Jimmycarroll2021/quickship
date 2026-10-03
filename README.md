@@ -103,8 +103,9 @@ overshoot exact limits. It does not promise an exact dollar/token ceiling.
 - Direct real .env access and production-config writes are denied, including literal shell
   redirections. Unsupported shell evaluation is refused. Workers write only assigned files
   in their worktree; researchers write only their assigned untrusted findings file.
-- Active harness/brief integrity is checked again before publishing. Updating the harness itself
-  requires `maintenance: true`, with changes in task worktrees and frozen active safeguards.
+- Active harness/brief integrity is checked again before publishing. `maintenance: true` permits
+  staging owned harness edits in task worktrees. Merging changes into the active harness halts
+  publication; apply reviewed updates outside an active run and start a fresh run.
 - Concurrent counters and ledgers are serialized; subagents bind to a registered step using agent_id.
 
 These controls are cooperative. Arbitrary project scripts, test runners and dependency installers

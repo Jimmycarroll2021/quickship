@@ -322,6 +322,16 @@ class ReleaseTests(unittest.TestCase):
         runtime.atomic(self.root/'docs/ledgers/criteria.json',{'results':[{'kind':'judge','status':'pass','detail':'PASS'}]})
         self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['failed'],1)
 
+    def test_judge_requires_actual_reviewer_and_current_artifacts(self):
+        self.b['success_criteria']=[{'kind':'judge','rubric':'README is accurate'}]
+        runtime.atomic(runtime.state()/'controller.json',self.config)
+        self.register(aid='reviewer-1')
+        agent_hook.handle({'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
+                           'last_assistant_message':'PASS\nChecked README.\njudge 0: PASS: hello'})
+        self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],1)
+        (self.root/'README.md').write_text('changed after review')
+        self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['failed'],1)
+
     def test_deliverable_path_escape(self):
         self.b['mission']['deliverables'] = ['../missing.md']
         runtime.atomic(self.root/'docs/RESULT.json',{'state':'READY'})
