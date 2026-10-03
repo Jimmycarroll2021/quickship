@@ -14,4 +14,7 @@ docs/design/contracts.md
 .gitattributes
 run.cmd
 init.cmd
+idea.cmd
+program.cmd
+IDEA.example.md
 VERSION

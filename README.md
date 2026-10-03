@@ -76,6 +76,30 @@ On Windows, open PowerShell and run `quickship\init.cmd C:\path\to\my-project`, 
 
 **Requirements:** `git`, Python 3.10 or newer, which needs only the standard library, the [`claude` CLI](https://docs.claude.com/en/docs/claude-code) logged in, and an authenticated [`gh`](https://cli.github.com) for the pull request step. You also need bash 4 or newer. On Windows that is Git Bash. macOS ships bash 3.2, so install a newer one with `brew install bash`. macOS isn't covered by CI yet.
 
+## From idea to MVP
+
+A single brief gets you a single pull request. To go from a raw idea to an MVP, let quickship write the briefs too:
+
+```bash
+cp IDEA.example.md IDEA.md && $EDITOR IDEA.md    # one paragraph: who it's for, what it does
+bash scripts/idea.sh                             # writes docs/PRD.md and 2 to 5 mission briefs
+bash scripts/program.sh                          # runs the missions in order, unattended
+```
+
+`idea.sh` runs a strategist agent once. It pressure-tests the idea, writes a short PRD with the riskiest assumptions and the smallest useful scope, and splits the MVP into sequenced missions. Each mission has testable criteria. `program.sh` then runs the missions one after another. Each mission branches off the previous one, so the pull requests form a stack. You review and merge them in order, first one first.
+
+```mermaid
+flowchart LR
+    idea["IDEA.md"] --> s["idea.sh<br/>strategist"]
+    s --> prd["docs/PRD.md"]
+    s --> m1["01 skeleton"] --> m2["02 core feature"] --> m3["03 ..."]
+    m1 -.-> pr1[("PR 1 → main")]
+    m2 -.-> pr2[("PR 2 → PR 1")]
+    m3 -.-> pr3[("PR 3 → PR 2")]
+```
+
+The chain stops at the first mission that doesn't end `DONE`. Read its report, fix the brief, and re-run `program.sh`. Missions that already finished are skipped. Read the PRD before you start the chain: it is the cheapest place to catch a wrong assumption.
+
 ## How it works
 
 ```mermaid
@@ -100,8 +124,8 @@ flowchart LR
 1. **Brief.** `run.sh` validates `BRIEF.yaml` and starts the lead headlessly. A broken brief fails here, before any tokens are spent.
 2. **Plan.** A planner subagent splits the goal into tasks that touch separate files. It works in a read-only tier, so planning cannot change anything.
 3. **Build.** Each task goes to a worker in its own git worktree, and independent tasks run in parallel. Workers have no web access. A separate researcher subagent reads the web but cannot run commands or push.
-4. **Integrate.** The lead merges each task branch, a read-only reviewer audits the diff, and `scripts/gate.sh` runs a secrets scan, lint, tests and build. A failure goes back to the worker with the error, at most three times.
-5. **Check.** `check_criteria.py` runs your `test`, `file` and `grep` criteria. Failures become new tasks while budget remains. The reviewer then acts as critic and grades each `judge` rubric on command output it produced itself, never on the worker's claims.
+4. **Integrate.** The lead merges each task branch, a read-only reviewer audits the diff, and `scripts/gate.sh` runs a secrets scan, lint, tests and build. A code change without a test is a review failure. A failure goes back to the worker with the error, at most three times.
+5. **Check.** `check_criteria.py` runs your `test`, `file` and `grep` criteria. Failures become new tasks while budget remains. The reviewer then acts as critic and grades each `judge` rubric on command output it produced itself, never on the worker's claims. A read-only security reviewer checks the mission's diff, and its high and medium findings become tasks too. For UI work, put a Playwright command in a `test` criterion and it becomes a browser check.
 6. **Ship.** The lead pushes a `mission/*` branch, opens the pull request, writes the report and stops. You review and merge.
 
 A run, step by step:
@@ -270,12 +294,14 @@ More in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 |---|---|
 | `CLAUDE.md` | The agent contract: hard rules, subagents and the lead loop. |
 | `BRIEF.example.yaml` | Annotated example brief. |
+| `scripts/idea.sh`, `idea.cmd` | Turn `IDEA.md` into a PRD and mission briefs. |
+| `scripts/program.sh`, `program.cmd` | Run the mission briefs in order as a stack of PRs. |
 | `scripts/run.sh`, `run.cmd` | Launch or resume a mission. |
 | `scripts/init.sh`, `init.cmd` | Install or upgrade the harness in a project. |
 | `scripts/gate.sh` | The definition of done: secrets, lint, tests, build. |
 | `scripts/*.py` | Brief validation, ledgers, budgets, criteria, overseer status. Standard library only. |
 | `scripts/hooks/` | `guard`, `budget`, `idem`, `anchor` and `stop` hooks, wired in `.claude/settings.json`. |
-| `.claude/agents/` | Planner, worker, researcher, reviewer and overseer subagents. |
+| `.claude/agents/` | Strategist, planner, worker, researcher, reviewer, security and overseer subagents. |
 | `tests/` | Self-tests with no model calls. `bash tests/run.sh` runs them all. |
 | `docs/design/contracts.md` | The contract for every file, script and hook. |
 | `docs/RUNBOOK.md` | Operating a run: state, resume, cancel, replan, budgets. |
