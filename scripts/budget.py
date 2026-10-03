@@ -71,7 +71,8 @@ def rates_for(model):
     for key, r in RATES.items():
         if key in m:
             return r
-    return RATES["sonnet"]
+    # not in the table (a newer or renamed model): price it at the highest known rate so the cost cap errs high
+    return max(RATES.values())
 
 
 def transcript_files(path):
@@ -83,6 +84,8 @@ def transcript_files(path):
     for p in sorted(glob.glob(os.path.join(glob.escape(d), glob.escape(stem) + "*.jsonl"))):
         if os.path.normcase(os.path.abspath(p)) != os.path.normcase(os.path.abspath(path)):
             files.append(p)
+    # current Claude Code layout: each subagent (worker, reviewer, planner) writes <session>/subagents/*.jsonl
+    files.extend(sorted(glob.glob(os.path.join(glob.escape(d), glob.escape(stem), "subagents", "*.jsonl"))))
     return files
 
 
