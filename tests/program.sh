@@ -47,6 +47,16 @@ expect_exit "mission 1 partial: exit 3" 3 bash -c "cd '$d2' && QS_RUN='$d2/stub_
 expect_contains "mission 1 partial: mission 2 not run" "1" "$(wc -l < "$d2/stub.log" | tr -d ' ')"
 expect_contains "mission 1 partial: names the state" "DONE_PARTIAL" "$OUT"
 
+d6="$(mk)"
+expect_exit "mission 2 partial: exit 3" 3 bash -c "cd '$d6' && QS_RUN='$d6/stub_run.sh' STUB_LOG='$d6/stub.log' STUB_PARTIAL=beta bash scripts/program.sh"
+printf '{"schema":3}\n' > "$d6/.claude/state/controller.json"
+echo recovery > "$d6/beta.txt"
+resume_tip="$(git -C "$d6" rev-parse HEAD)"
+: > "$d6/stub.log"
+expect_exit "resume preserves dirty mission checkout" 0 prog "$d6"
+expect_contains "resume does not detach back to predecessor" "$resume_tip" "$(head -1 "$d6/stub.log")"
+expect_contains "resume names the preserved checkout" "existing checkout" "$OUT"
+
 d3="$(mk)"; rm "$d3"/docs/missions/*.yaml
 expect_exit "no missions: exit 2" 2 prog "$d3"
 d4="$(mk)"; sed -i '/^  steps:/d' "$d4/docs/missions/02-beta.yaml"

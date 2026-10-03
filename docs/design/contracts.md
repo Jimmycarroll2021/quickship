@@ -1,5 +1,36 @@
 # quickship runtime contracts
 
+## v0.3 controller contract (supersedes conflicting v0.2 sections below)
+
+The supported entrypoint remains `bash scripts/run.sh` / `run.cmd`; it delegates to a Python supervisor.
+Runtime schema is 3. The controller freezes the validated brief and harness hashes, enforces an absolute
+deadline across resumes, and alone publishes. Agents submit `docs/RESULT.json` (`state`: READY,
+DONE_PARTIAL, SAFE_STOP or HALT; `reason`: string). They do not write the authoritative RUN_STATE.
+Actual security responses and reviewer judge grades are captured by SubagentStop hooks, not supplied by the lead.
+Judge evidence must match the frozen rubric and the current deliverable hashes; security must match the commit at binding and completion.
+DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
+security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
+Exit codes: 0 verified DONE; 2 invalid preflight/brief; 3 partial/safe stop; 4 HALT; 5 controller failure.
+
+`quality` is optional: `profile: code|docs` (default code), and `lint`, `test`, `build`, each either
+a shell command string or `{skip: "human supplied reason"}`. Node defaults are the package-manager scripts;
+Python defaults are Ruff, pytest and build when a build system exists. Missing required checks fail.
+An unsupported code stack requires all three explicit entries. Docs mode permits only documentation changes.
+`maintenance: true` permits staging owned task-worktree edits to harness files. Changing the active main-checkout harness halts publication.
+Apply reviewed harness updates outside an active run, then start a fresh run with the updated safeguards.
+Cost figures are API-equivalent estimates for subscription accounts. API-authenticated sessions also receive
+the remaining `--max-budget-usd`; subscription sessions never switch billing or enable usage credits.
+
+Runtime mutations are serialized with SQLite transactions; file replacements use unique temporary files.
+Each step has a unique ID; subagents bind with `python scripts/ledger.py step-bind <id>` as their first command.
+The guard binds the hook's agent_id to that registered step before allowing owned-file writes. The legacy
+current_step file is a compatibility view only, never the authority for schema-3 hooks.
+Publishing reservations are run-wide, persisted before external calls, and reconciled against GitHub on resume.
+Unknown shell constructs, native PowerShell, external connectors, protected writes and agent-side publishing
+are refused. These are cooperative safeguards, not a sandbox for hostile project code/dependencies.
+Preflight is read-only (`python scripts/preflight.py`), supports Python 3.10+, Git Bash/Linux bash 4+,
+and Claude Code >=2.1.288. Old active runtime state is preserved and requires explicit migration/restart.
+
 Every script and hook in this repo builds to these contracts. They are the interface between the lead loop in `CLAUDE.md`, the hooks in `scripts/hooks/`, the CLIs in `scripts/`, and the tests in `tests/`. Change a contract here first, then the code.
 
 ## Conventions (all scripts)

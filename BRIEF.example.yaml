@@ -27,3 +27,6 @@ permissions:
       - "gh pr create*"
 # How the lead resolves ambiguity when it is not covered above: always pick a sensible default and write it to the ledger as an assumption.
 ambiguity_policy: choose-default-and-record
+
+quality:
+  profile: docs

@@ -4,8 +4,12 @@ source "$(dirname "$0")/lib.sh"
 mk() { # mk <dir>: fresh git repo with a copy of scripts/gate.sh and an initial commit
   git init -q -b main "$1" && cp -r "$ROOT/scripts" "$1/" && (cd "$1" && git add -A && git -c user.email=t@t -c user.name=t commit -qm init)
 }
+# Fixture projects explicitly skip non-test checks; missing checks are separately tested by hardening.py.
+seed_quality() {
+  printf 'quality:\n  lint:\n    skip: "fixture has no linter"\n  build:\n    skip: "fixture has no build"\n  test: "%s"\n' "$2" > "$1/BRIEF.yaml"
+}
 # The failing test exists ONLY in the worktree. With the old root resolution the gate silently checks main and passes.
-main="$(tmpdir)"; mk "$main"
+main="$(tmpdir)"; mk "$main"; seed_quality "$main" "npm test"
 ( cd "$main" && git worktree add -q .claude/worktrees/wt -b main--wt \
   && cd .claude/worktrees/wt && printf '{"name":"x","scripts":{"test":"exit 1"}}' > package.json && mkdir -p node_modules \
   && git add package.json && git -c user.email=t@t -c user.name=t commit -qm "failing test" )
@@ -13,7 +17,7 @@ OUT="$(cd "$main/.claude/worktrees/wt" && CLAUDE_PROJECT_DIR="$main" bash script
 [ "$got" = 2 ] && ok "worktree: gate exit 2 with CLAUDE_PROJECT_DIR set to main" || bad "worktree: want exit 2, got $got: $(printf '%s' "$OUT" | tail -n 2)"
 expect_contains "worktree: failure names the test step" "test failed" "$OUT"
 
-clean="$(tmpdir)"; mk "$clean"
+clean="$(tmpdir)"; mk "$clean"; seed_quality "$clean" "true"
 expect_exit "clean repo passes" 0 bash -c "cd '$clean' && bash scripts/gate.sh"
 printf '%s%s\n' AKIA ABCDEFGHIJKLMNOP > "$clean/untracked.txt"   # split so this file never matches the scan
 OUT="$(cd "$clean" && bash scripts/gate.sh 2>&1)"; got=$?
@@ -27,7 +31,7 @@ expect_exit "prose with sk- prefix is not a secret" 0 bash -c "cd '$clean' && ba
 # they take minutes, test the harness rather than the project, and two of them in parallel (lead + worker) time out
 # a 30-minute mission. QS_SELFTEST=1 forces them. The stub leaves a marker file because the gate swallows the
 # output of a passing step. ---
-inst="$(tmpdir)"; mk "$inst"
+inst="$(tmpdir)"; mk "$inst"; seed_quality "$inst" "true"
 mkdir -p "$inst/tests"; printf '#!/usr/bin/env bash
 touch selftests_ran; exit 0
 ' > "$inst/tests/run.sh"

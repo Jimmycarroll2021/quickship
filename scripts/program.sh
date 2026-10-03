@@ -28,14 +28,21 @@ for m in "${missions[@]}"; do
   if [ -n "$prev" ]; then base="$(printf '%s' "$prev" | cut -f3)"; echo "program: $m already DONE on $base"; continue; fi
   echo "program: starting $m${base:+ on top of $base}"
 
-  # detached at the base, so the brief commit lands on the new mission's branch and never on main or the base branch
-  git checkout -q --detach "${base:-HEAD}" || { echo "program: cannot check out ${base:-HEAD}" >&2; exit 3; }
-  if [ -n "$base" ]; then
-    awk -v b="$base" '{print} /^  goal:/ && !d {print "  base: \"" b "\""; d=1}' "$m" > BRIEF.yaml
+  current="$(cat "$S/program-current" 2>/dev/null)"
+  if [ "$current" = "$m" ] && [ -f "$S/controller.json" ]; then
+    echo "program: resuming $m in the existing checkout"
   else
-    cp "$m" BRIEF.yaml
+    # A fresh mission begins at its predecessor. A resume preserves the existing branch,
+    # dirty work, brief and session so checkout cannot discard or conflict with recovery data.
+    git checkout -q --detach "${base:-HEAD}" || { echo "program: cannot check out ${base:-HEAD}" >&2; exit 3; }
+    if [ -n "$base" ]; then
+      awk -v b="$base" '{print} /^  goal:/ && !d {print "  base: \"" b "\""; d=1}' "$m" > BRIEF.yaml
+    else
+      cp "$m" BRIEF.yaml
+    fi
+    git add BRIEF.yaml && { git commit -q -m "brief: $(basename "$m" .yaml)" -- BRIEF.yaml >/dev/null 2>&1 || true; }
+    printf '%s\n' "$m" > "$S/program-current"
   fi
-  git add BRIEF.yaml && { git commit -q -m "brief: $(basename "$m" .yaml)" -- BRIEF.yaml >/dev/null 2>&1 || true; }
 
   st=""
   for _ in 1 2 3 4 5 6; do        # run.sh resumes the same session after a crash; it gives up itself after 5 restarts
@@ -47,7 +54,7 @@ for m in "${missions[@]}"; do
   pr="$(grep -Eo 'https://github\.com/[^ )"`]+/pull/[0-9]+' docs/REPORT.md 2>/dev/null | head -n 1)"
   printf '%s\t%s\t%s\n' "$m" "${st:-NONE}" "$branch" >> "$LOG"
   printf '| %s | %s | %s | %s |\n' "$(basename "$m")" "${st:-NONE}" "${branch:-?}" "${pr:-none}" >> "$SUMMARY"
-  if [ "$st" != DONE ]; then
+  if [ "$st" != DONE ] || [ "$rc" != 0 ]; then
     echo "program: $m ended ${st:-without a terminal state}; read docs/REPORT.md. Later missions were not started." >&2
     exit 3
   fi

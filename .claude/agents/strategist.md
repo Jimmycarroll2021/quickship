@@ -33,6 +33,7 @@ Stack default when the idea names none: a CLI or library is a Python 3.12 packag
 Write 2 to 5 files, `docs/missions/01-<kebab>.yaml`, `02-<kebab>.yaml`, ... (two-digit number, kebab-case name of at most 24 characters). They run in that order; mission N starts from mission N-1's branch, so each mission assumes everything before it exists and never redoes it. Together they deliver the MVP scope and nothing more.
 
 - **Mission 01** sets up the skeleton: the manifest, the source layout, the stack's test runner and linter wired so the gate has real tests to run, and one passing smoke test of real behaviour. For a web UI it also installs Playwright with one end-to-end test.
+- **Every mission** has explicit `quality` commands for the planned stack, including skeleton missions before a manifest exists. Use `quality.profile: docs` only for documentation changes. Node missions specify lint/test/build commands; Python missions specify lint scoped to application files, pytest and build, or an explicit build skip reason when no artifact is required. Missing checks are failures, never implicit skips.
 - **Every mission** has a focused `goal` (one or two sentences naming the user-visible outcome), `deliverables` (file or directory paths), and `success_criteria` with:
   - at least one `test` criterion whose `cmd` is a real command that proves the behaviour, such as `uv run pytest -q tests/test_import.py` or `npm test`, never only that a file exists;
   - exactly one `judge` criterion with a `rubric` a reviewer can grade from evidence;
@@ -79,6 +80,11 @@ permissions:
       - "git push origin mission/*"
       - "gh pr create*"
 ambiguity_policy: choose-default-and-record
+quality:
+  profile: code
+  lint: "uv run ruff check src tests/test_parse.py"
+  test: "uv run pytest -q"
+  build: "uv build"
 ```
 
 ## Step 4: validate, fix, finish
