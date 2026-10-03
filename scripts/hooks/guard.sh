@@ -3,7 +3,7 @@
 # sessions and fresh clones where ~/.claude settings do not exist. Fails closed: malformed input -> exit 2.
 # Input: hook JSON on stdin. Exit 0 = allow, exit 2 = deny (reason on stderr).
 #
-# Clauses, in order:  1 hard rules (always)   1b reviewer subagent (agent_type == reviewer)   1c overseer role
+# Clauses, in order:  1 hard rules (always)   1b read-only subagents (agent_type reviewer or security)   1c overseer role
 # (QS_ROLE=overseer; exempt from the rest)   2 overseer cancel flag   3 plan/act tier   4 lethal-trifecta legs.
 # Clauses 2-4 act only when their state file exists (.claude/state/{cancel,tier,current_step.json}), i.e. during a run.
 # PostToolUse never denies; it only records the leg a tool call used (clause 4).
@@ -47,7 +47,7 @@ deny() {
   echo "guard: denied ($1): $tool $arg" >&2; exit 2
 }
 allow() { printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$tool" "$arg" >> "$S/hook_log" 2>/dev/null; exit 0; }
-# Read-only subcommands: inspection, the gate and tests, the state CLIs. Shared by the plan tier, the reviewer and the overseer.
+# Read-only subcommands: inspection, the gate and tests, the state CLIs. Shared by the plan tier, the reviewer, security and the overseer.
 ro_re='^(git[[:space:]]+(status|log|diff|ls-files|rev-parse|show|branch([[:space:]]+--list)?|worktree[[:space:]]+list)|ls|cat|head|tail|wc|grep|rg|find|pwd|echo|tr|sort|uniq|cut|awk|sed[[:space:]]+-n|bash[[:space:]]+scripts/(gate|diffbase)\.sh|bash[[:space:]]+tests/|python3?[[:space:]]+scripts/(ledger|budget|brief|check_criteria)\.py)([[:space:]]|$)'
 has_redirect() { # a > redirect (other than into .claude/state/) or a tee anywhere in the line
   { [[ "$arg" =~ \> ]] && ! [[ "$arg" =~ \>[[:space:]]*\.claude/state/ ]]; } || [[ "$arg" =~ [[:space:]]tee[[:space:]] ]]
@@ -122,17 +122,17 @@ case "$tool" in
     ;;
 esac
 
-# --- 1b. reviewer subagent: read-only audit. It may inspect, run the gate, tests and evals, and the brief's own test
-# criteria (verbatim), and never changes git state or writes a file. ---
-if [ "$agent" = reviewer ]; then
+# --- 1b. read-only subagents (reviewer, security): audit only. They may inspect, run the gate, tests and evals, and the brief's own test
+# criteria (verbatim), and never change git state or write a file. Deny reasons name the agent. ---
+if [ "$agent" = reviewer ] || [ "$agent" = security ]; then
   case "$tool" in
-    Write|Edit|MultiEdit) deny "reviewer is read-only";;
+    Write|Edit|MultiEdit) deny "$agent is read-only";;
     Bash)
       for seg in "${SEGS[@]}"; do
-        [[ "$seg" =~ (^|[[:space:]])git[[:space:]]+(add|commit|merge|checkout|worktree|push)([[:space:]]|$) ]] && deny "reviewer never changes git state"
-        [[ "$seg" =~ (^|[[:space:]])gh[[:space:]] ]] && deny "reviewer never changes git state"
+        [[ "$seg" =~ (^|[[:space:]])git[[:space:]]+(add|commit|merge|checkout|worktree|push)([[:space:]]|$) ]] && deny "$agent never changes git state"
+        [[ "$seg" =~ (^|[[:space:]])gh[[:space:]] ]] && deny "$agent never changes git state"
       done
-      has_redirect && deny "reviewer may only run read-only, test and eval commands (no redirects)"
+      has_redirect && deny "$agent may only run read-only, test and eval commands (no redirects)"
       # success_criteria of kind test from the brief, one per line; no brief -> no extra allowances
       brief_cmds="$("$PY" -c '
 import json, sys
@@ -149,7 +149,7 @@ for c in b.get("success_criteria", []):
         [[ "$s" =~ ^python3?[[:space:]]+scripts/check_criteria\.py([[:space:]]|$) ]] && continue
         [[ "$s" =~ $runner_re ]] && continue
         hit=0; while IFS= read -r c; do [ -n "$c" ] && [ "$c" = "$s" ] && hit=1; done <<< "$brief_cmds"
-        [ "$hit" = 1 ] || deny "reviewer may only run read-only, test and eval commands ($seg)"
+        [ "$hit" = 1 ] || deny "$agent may only run read-only, test and eval commands ($seg)"
       done
       ;;
   esac

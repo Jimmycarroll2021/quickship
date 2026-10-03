@@ -123,7 +123,7 @@ printf '{"id":"s020","slug":"x","legs":[]}' > "$S/current_step.json"
 expect_exit "backslash: PostToolUse read of work\_untrusted records leg" 0 hook guard.sh "$(file_json_py Read 'C:\repo\work\_untrusted\x.md' PostToolUse)"
 expect_contains "backslash: legs file has untrusted_content" "untrusted_content" "$(cat "$S/legs/s020" 2>/dev/null)"
 rm -f "$S/current_step.json"
-# ---- agent_type: the reviewer subagent is read-only and may run only inspection, test and eval commands ----
+# ---- agent_type: the reviewer and security subagents are read-only and may run only inspection, test and eval commands ----
 # Fixtures carry a top-level agent_type (absent = lead). Built with json.dumps so $(...) and quotes survive.
 agent_bash_json() { "$QS_PYTHON" -c 'import json,sys; print(json.dumps({"hook_event_name":"PreToolUse","tool_name":"Bash","agent_type":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"; }
 agent_file_json() { "$QS_PYTHON" -c 'import json,sys; print(json.dumps({"hook_event_name":"PreToolUse","tool_name":sys.argv[2],"agent_type":sys.argv[1],"tool_input":{"file_path":sys.argv[3]}}))' "$1" "$2" "$3"; }
@@ -160,6 +160,19 @@ expect_exit "reviewer denied: non-criterion script" 2 hook guard.sh "$(agent_bas
 expect_exit "reviewer denied: criterion with extra args" 2 hook guard.sh "$(agent_bash_json reviewer "bash tools/verify.sh --strict --fix")"
 rm -f "$S/brief.json"
 expect_exit "reviewer denied: criterion command once the brief is gone" 2 hook guard.sh "$(agent_bash_json reviewer "bash tools/verify.sh --strict")"
+# the security subagent gets the same read-only clause, with deny reasons naming it
+expect_exit "security denied: Write src/a.ts" 2 hook guard.sh "$(agent_file_json security Write "src/a.ts")"
+expect_contains "security write deny reason" "security is read-only" "$OUT"
+expect_exit "security denied: git commit -m x" 2 hook guard.sh "$(agent_bash_json security "git commit -m x")"
+expect_contains "security git deny reason" "security never changes git state" "$OUT"
+expect_exit "security denied: npm install x" 2 hook guard.sh "$(agent_bash_json security "npm install x")"
+expect_contains "security bash deny reason" "security may only run read-only, test and eval commands (npm install x)" "$OUT"
+expect_exit "security allowed: git diff main...HEAD" 0 hook guard.sh "$(agent_bash_json security "git diff main...HEAD")"
+expect_exit "security allowed: pytest -q" 0 hook guard.sh "$(agent_bash_json security "pytest -q")"
+"$QS_PYTHON" -c 'import json,sys; json.dump({"success_criteria":[{"kind":"test","cmd":"bash tools/verify.sh --strict","expect":0}]}, open(sys.argv[1],"w"))' "$S/brief.json"
+expect_exit "security allowed: brief test criterion verbatim" 0 hook guard.sh "$(agent_bash_json security "bash tools/verify.sh --strict")"
+expect_exit "security denied: criterion with extra args" 2 hook guard.sh "$(agent_bash_json security "bash tools/verify.sh --strict --fix")"
+rm -f "$S/brief.json"
 # the lead (no agent_type) and other subagents are unaffected
 expect_exit "lead: npm install allowed in act tier" 0 hook guard.sh "$(bash_json "npm install x")"
 expect_exit "lead: Write src allowed in act tier" 0 hook guard.sh "$(file_json Write "src/a.ts")"
