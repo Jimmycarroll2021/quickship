@@ -43,6 +43,21 @@ echo '{"type":"assistant","message":{"id":"x1","usage":{"input_tokens":1000,"out
 out="$(budget --transcript "$TR")"; out="${out//$'\r'/}"
 expect_contains "sibling transcript summed, unrelated ignored" '"tokens": 13,' "$out"
 rm -f "$T/sess-sub1.jsonl" "$T/other.jsonl"
+# current Claude Code layout: subagent transcripts live in <session>/subagents/*.jsonl beside the lead's transcript;
+# a worker's spend must count against the mission budget
+mkdir -p "$T/sess/subagents"
+echo '{"type":"assistant","message":{"id":"w1","model":"claude-sonnet-5","usage":{"input_tokens":20,"output_tokens":30}}}' > "$T/sess/subagents/agent-a1.jsonl"
+echo '{"type":"assistant","message":{"id":"w2","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1}}}' > "$T/sess/subagents/agent-a2.jsonl"
+mkdir -p "$T/other/subagents"; echo '{"type":"assistant","message":{"id":"x9","model":"claude-sonnet-5","usage":{"input_tokens":900,"output_tokens":0}}}' > "$T/other/subagents/agent-z.jsonl"
+out="$(budget --transcript "$TR")"; out="${out//$'
+'/}"
+expect_contains "subagents/ transcripts summed, another session's ignored" '"tokens": 60,' "$out"
+rm -rf "$T/sess" "$T/other"
+# a model missing from the rate table is priced at the highest known rate: a spending cap must err high, not low
+echo '{"type":"assistant","message":{"id":"u1","model":"claude-newtier-9","usage":{"input_tokens":1000000,"output_tokens":0}}}' > "$T/unknown.jsonl"
+out="$(budget --transcript "$T/unknown.jsonl")"; out="${out//$''/}"
+expect_contains "unknown model priced at the highest rate" '"cost_usd": 15.0,' "$out"
+rm -f "$T/unknown.jsonl"
 
 # steps over limit
 write_brief 1000000 100 1000 10
@@ -52,14 +67,17 @@ out="$(budget --exhausted-only)"; out="${out//$'\r'/}"
 
 # near exhaustion (>= 85% of a limit, not yet over): the lead's cue to wrap up with a PR instead of being cut off
 echo 9 > "$S/steps"
-out="$(budget)"; out="${out//$''/}"
+out="$(budget)"; out="${out//$'
+'/}"
 expect_contains "steps 9/10: near lists steps" '"near": ["steps"]' "$out"
 expect_contains "steps 9/10: not exhausted" '"exhausted": []' "$out"
 echo 3 > "$S/steps"
-out="$(budget)"; out="${out//$''/}"
+out="$(budget)"; out="${out//$'
+'/}"
 expect_contains "steps 3/10: near is empty" '"near": []' "$out"
 echo 11 > "$S/steps"
-out="$(budget)"; out="${out//$''/}"
+out="$(budget)"; out="${out//$'
+'/}"
 expect_contains "steps 11/10: exhausted, not near" '"near": []' "$out"
 
 # PreToolUse gating while exhausted

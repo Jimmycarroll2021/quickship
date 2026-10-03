@@ -1,4 +1,4 @@
-# The first mission quickship ran on itself (2026-09-30): DONE in 37 minutes, 72 steps, about $4.56, PR opened.
+# The first mission quickship ran on itself (2026-09-30): DONE in 40 minutes, 84 tool calls, 0.24M uncached tokens plus 3.0M cache reads, PR opened.
 mission:
   goal: "Add a README.md at the repo root that explains what quickship is, how a human writes BRIEF.yaml and runs scripts/run.sh, and where the report ends up"
   deliverables:
