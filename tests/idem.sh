@@ -127,7 +127,7 @@ mcp_json() {
 # ledger_lines -> current line count of idem.jsonl (0 if absent)
 ledger_lines() { wc -l < "$S/idem.jsonl" 2>/dev/null || echo 0; }
 
-PR_INPUT='{"owner":"jimmy","repo":"quickship","head":"mission/x","base":"main","title":"t","body":"b"}'
+PR_INPUT='{"owner":"example-owner","repo":"quickship","head":"mission/x","base":"main","title":"t","body":"b"}'
 printf '{"id":"s001"}' > "$S/current_step.json"
 
 # first create_pull_request for step s001: allowed, pending line with the tool name + head
@@ -136,7 +136,7 @@ assert_last_line "mcp pending line cmd/step" "mcp__github__create_pull_request h
 expect_contains "mcp pending line has status pending" '"status": "pending"' "$(tail -n 1 "$S/idem.jsonl")"
 
 # PostToolUse with a normal response records done exit 0
-expect_exit "mcp create_pull_request post allowed" 0 hook idem.sh "$(mcp_json PostToolUse mcp__github__create_pull_request "$PR_INPUT" '{"content":[{"type":"text","text":"https://github.com/jimmy/quickship/pull/1"}]}')"
+expect_exit "mcp create_pull_request post allowed" 0 hook idem.sh "$(mcp_json PostToolUse mcp__github__create_pull_request "$PR_INPUT" '{"content":[{"type":"text","text":"https://github.com/example-owner/quickship/pull/1"}]}')"
 expect_contains "mcp done line recorded" '"status": "done"' "$(tail -n 1 "$S/idem.jsonl")"
 expect_contains "mcp done line exit 0" '"exit": 0' "$(tail -n 1 "$S/idem.jsonl")"
 

@@ -1,4 +1,4 @@
-# A real application built unattended (2026-09-30): DONE in 96 minutes, 257 steps, about $3.40, PR with 2,134 lines added.
+# A real application built unattended (2026-09-30): DONE in 72 minutes, 288 tool calls, 0.68M uncached tokens plus 12.9M cache reads, PR with 2,134 lines added (target repo is private).
 # Copy localrag-notes.md to docs/BRIEF_NOTES.md in the target project before running; the goal points the lead at it.
 mission:
   goal: "Build localrag, a CPU-only private RAG assistant over three PDFs (constraints in docs/BRIEF_NOTES.md): a uv-managed Python 3.13 package with a localrag CLI that downloads llama.cpp and small GGUF models, benchmarks candidate chat models, indexes PDFs into a sqlite vector index and answers questions with cited passages"
@@ -18,7 +18,7 @@ success_criteria:
   - {kind: judge, rubric: "Answers are grounded in the retrieved passages, every answer cites the source file and page, and the CLI refuses to answer when nothing relevant is retrieved"}
 budgets:
   tokens: 12000000
-  cost_usd: 30
+  cost_usd: 60
   wall_clock_min: 150
   steps: 500
   stall_limit: 3

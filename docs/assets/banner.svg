@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="t d">
+  <title id="t">quickship</title>
+  <desc id="d">One brief in, one pull request out, nobody in the loop. Brief, plan, parallel workers, gate, pull request.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1321"/>
+      <stop offset="1" stop-color="#1d2d44"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f4a261"/>
+      <stop offset="1" stop-color="#e76f51"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#748cab"/>
+    </marker>
+  </defs>
+  <rect width="1280" height="360" rx="24" fill="url(#bg)"/>
+  <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <text x="80" y="128" font-size="76" font-weight="700" fill="#f0ebd8" letter-spacing="-1">quick<tspan fill="url(#accent)">ship</tspan></text>
+    <text x="82" y="178" font-size="28" fill="#c9d3e3">One brief in. One pull request out. Nobody in the loop.</text>
+    <text x="82" y="214" font-size="18" fill="#748cab">An unattended delivery harness for Claude Code, with guardrails enforced by hooks, not prompts.</text>
+  </g>
+  <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" text-anchor="middle">
+    <rect x="80" y="262" width="150" height="50" rx="12" fill="#3e5c76"/>
+    <text x="155" y="293" fill="#f0ebd8">BRIEF.yaml</text>
+    <line x1="232" y1="287" x2="290" y2="287" stroke="#748cab" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="294" y="262" width="130" height="50" rx="12" fill="#3e5c76"/>
+    <text x="359" y="293" fill="#f0ebd8">plan</text>
+    <line x1="426" y1="287" x2="484" y2="287" stroke="#748cab" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="488" y="250" width="170" height="22" rx="7" fill="#3e5c76" opacity="0.55"/>
+    <rect x="488" y="276" width="170" height="22" rx="7" fill="#3e5c76" opacity="0.8"/>
+    <rect x="488" y="302" width="170" height="22" rx="7" fill="#3e5c76"/>
+    <text x="573" y="292" fill="#f0ebd8" font-size="15">workers × worktrees</text>
+    <line x1="660" y1="287" x2="718" y2="287" stroke="#748cab" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="722" y="262" width="170" height="50" rx="12" fill="#3e5c76"/>
+    <text x="807" y="293" fill="#f0ebd8">review + gate</text>
+    <line x1="894" y1="287" x2="952" y2="287" stroke="#748cab" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="956" y="262" width="244" height="50" rx="12" fill="url(#accent)"/>
+    <text x="1078" y="293" fill="#0d1321">pull request + report</text>
+  </g>
+</svg>

@@ -1,10 +1,12 @@
 # PRD: quickship — human-out-of-the-loop shipping harness
 
+> These are the original requirements, kept as written. The boxes are not ticked here. What shipped is recorded in [CHANGELOG.md](../CHANGELOG.md), and the runtime contracts are in [docs/design/contracts.md](../docs/design/contracts.md).
+
 Clarifying questions were answered from the owner's stated intent ("long horizon full agentic work end to end to ship fast without human") and the approved plan; no interactive round was needed.
 
 ## Introduction
 
-quickship is a Claude Code project harness that takes one Mission Brief and ships working software end to end with nobody answering questions during the run. A lead session plans, dispatches parallel workers into git worktrees, merges, reviews, runs a deterministic gate, and opens a pull request. The run can last hours, survive a process restart, stop itself when a budget is exhausted, and always ends with a written report. The design comes from `LONG_HORIZON_AUTONOMOUS_ORCHESTRATOR_SPEC.md` (Gulli, Arsanjani, Kashaboina, Bhagwat) applied to the existing quickship scaffold.
+quickship is a Claude Code project harness that takes one Mission Brief and ships working software end to end with nobody answering questions during the run. A lead session plans, dispatches parallel workers into git worktrees, merges, reviews, runs a deterministic gate, and opens a pull request. The run can last hours, survive a process restart, stop itself when a budget is exhausted, and always ends with a written report. The design draws on published agentic design-pattern work by Gulli, Arsanjani, Kashaboina and Bhagwat, applied to the existing quickship scaffold.
 
 The problem it solves: every off-the-shelf agent loop assumes a human is reachable. Ask-the-user branches, approval queues and "stop and say so" instructions become silent stalls when nobody is there. quickship replaces each of those with a policy the agent can execute alone: choose a default and record it, skip and record it, or safe-stop with a report.
 

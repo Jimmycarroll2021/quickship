@@ -1,5 +1,7 @@
 # Decision log
 
+This is quickship's own log from building the harness with itself. In an installed project, `init.sh` creates a fresh one.
+
 One line per merged task. Append only; never edit past entries.
 
 | Date | Task | Decision | Why |

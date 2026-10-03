@@ -1,6 +1,6 @@
 # Runbook: operating a quickship run
 
-This is for the person who started `bash scripts/run.sh` and wants to know what is on disk, how to intervene, and what a failure means. The contracts behind every file are in `design/contracts.md`.
+This is for the person who started `bash scripts/run.sh` and wants to know what is on disk, how to intervene, and what a failure means. The contracts behind every file are in [design/contracts.md](design/contracts.md).
 
 ## Where state lives
 

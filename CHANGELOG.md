@@ -2,6 +2,19 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
+## [0.1.1] - 2026-10-03
+
+### Fixed
+
+- **Budgets count subagent spend.** Current Claude Code writes each subagent's transcript to `<session>/subagents/`, which `budget.py` did not read. The token and cost budgets therefore missed every worker, planner and reviewer call, and the cost cap tripped late. Recomputed from the full transcripts, the v0.1.0 missions used two to four times what their reports showed.
+- **Unknown models are priced conservatively.** A model missing from the rate table, such as a newer release, was priced as Sonnet. It is now priced at the highest known rate, so the cost cap errs high.
+- **Stale contract line.** `CLAUDE.md`, which is installed into every project, no longer says the repo has no application stack.
+
+### Changed
+
+- **New README** with a banner, diagrams of the architecture, a run sequence, the guardrail layers and the terminal states, a track record recomputed from transcripts, and a section on when quickship fits. Also new: `CONTRIBUTING.md`.
+- **Example briefs** have higher `cost_usd` limits to match the corrected accounting.
+
 ## [0.1.0] - 2026-10-03
 
 First public release: a Claude Code harness that takes one Mission Brief and ships a pull request with nobody answering questions during the run.
@@ -16,14 +29,7 @@ First public release: a Claude Code harness that takes one Mission Brief and shi
 
 ### Verified
 
-Seven unattended missions ran with this release:
+Seven unattended missions ran with this release, including a real application and a kill-and-resume run. The figures, recomputed in 0.1.1 from the full transcripts, are in the README under "Track record".
 
-- README mission on quickship itself: `DONE` in 37 minutes, 72 steps, about $4.56, PR opened.
-- Same goal with `steps: 12`: `DONE_PARTIAL` in about 5 minutes, $1.68, report written with the gap listed.
-- Kill and resume: the lead killed mid-task, `run.sh` resumed the same session, `DONE`, exactly one push and one PR in `idem.jsonl`, $1.59.
-- `claude --cloud` run: `DONE`, 26 steps, about $1.24, PR opened through the GitHub tool on the session's `claude/*` branch.
-- localrag, a CPU-only private RAG assistant over three PDFs (llama.cpp, GGUF, sqlite): `DONE` in 96 minutes, 257 steps, about $3.40, 4 tasks including one the lead added after a weak eval, PR with 2,134 lines added.
-- A docs mission in a project installed by `init.sh`, before the last fixes: the deliverable merged but the run hit its 30-minute limit after the worker and critic lost about 10 minutes to permission denials. `DONE_PARTIAL`, no PR.
-- The same kind of mission after them: `DONE` in 7.7 minutes, 63 steps, about $0.95, all three criteria PASS, the judge graded on output the critic produced itself, PR opened on GitHub.
-
+[0.1.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.0

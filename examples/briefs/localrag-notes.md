@@ -4,6 +4,8 @@ Copy this file to `docs/BRIEF_NOTES.md` in the target project next to `BRIEF.yam
 
 ## Machine
 
+The reference machine for this run was an ordinary laptop with no usable GPU. Change these values to match yours.
+
 | Item | Value |
 |---|---|
 | CPU | AMD Ryzen 7 7735U, 8 cores / 16 threads |
@@ -47,7 +49,7 @@ Every model must run on the CPU within that RAM alongside the index and the embe
 | Model chosen | Qwen2.5-1.5B-Instruct Q4_K_M at 20.9 tok/s (the 3B models were slower with no eval gain) |
 | Index | 4,449 chunks over three PDFs |
 | Eval | 10 of 13 questions correct |
-| Run | `DONE` in 96 minutes, 257 steps, about $3.40; 4 tasks, the fourth added by the lead after a weak first eval |
+| Run | `DONE` in 72 minutes, 288 tool calls, 0.68M uncached tokens plus 12.9M cache reads; 4 tasks, the fourth added by the lead after a weak first eval |
 | PR | 2,134 lines added |
 
 The lead added the fourth task on its own after the first eval scored below the rubric, recorded the decision in `docs/decisions.md`, and did not ask.

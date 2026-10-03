@@ -9,7 +9,7 @@ success_criteria:
   - {kind: test, cmd: "bash tests/diffbase.sh", expect: 0}
 budgets:
   tokens: 3000000
-  cost_usd: 12
+  cost_usd: 20
   wall_clock_min: 60
   steps: 120
   stall_limit: 3
