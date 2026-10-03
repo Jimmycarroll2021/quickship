@@ -56,7 +56,8 @@ Nobody answers questions. Choose a default and record it, skip a block, or submi
 6. Replan: use stall-check/replan within limits, invalidate disproved facts. After merge clean up
    task worktrees with git worktree remove and task branches with git branch -d.
 7. Criteria: `python scripts/check_criteria.py`; fix failures while resources allow. Dispatch a
-   bound reviewer to independently grade judge criteria and quote evidence. Record its grades with
+   bound reviewer to independently grade judge criteria and quote evidence. Tell the reviewer each judge's
+   zero-based index in the entire success_criteria array, not its ordinal among judges. Record its grades with
    `python scripts/check_criteria.py --judge <index> PASS|FAIL --evidence "<quoted output>"`.
 8. Handoff: write docs/REPORT.md with work, criteria, assumptions, blocks, API-equivalent budget
    estimates and gaps. Commit intended code, ledger and report changes on the mission branch.

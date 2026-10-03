@@ -12,9 +12,21 @@ def artifacts(brief):
     root = runtime.root()
     for name in brief["mission"]["deliverables"]:
         path = (root / name).resolve()
-        if not path.is_relative_to(root) or not path.is_file():
+        if not path.is_relative_to(root) or not path.exists():
             raise ValueError("missing or outside-project review artifact")
-        result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.is_file():
+            result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        else:
+            names = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", name],
+                                   cwd=root, capture_output=True, check=True).stdout.decode().split("\0")
+            contents = {}
+            for filename in filter(None, names):
+                entry = root / filename
+                if not entry.resolve().is_relative_to(root):
+                    raise ValueError("review artifact resolves outside project")
+                if entry.is_file():
+                    contents[filename] = hashlib.sha256(entry.read_bytes()).hexdigest()
+            result[name] = hashlib.sha256(json.dumps(contents, sort_keys=True).encode()).hexdigest()
     return result
 
 
@@ -32,6 +44,10 @@ def handle(event):
             for match in re.finditer(r"^judge\s+(\d+):\s*(PASS|FAIL):\s*(.+)$", text, re.MULTILINE):
                 index = int(match[1])
                 criteria = brief["success_criteria"]
+                judges = [i for i, c in enumerate(criteria) if c["kind"] == "judge"]
+                # A sole judge numbered zero is unambiguous, even when a file/test precedes it.
+                if index == 0 and len(judges) == 1 and criteria[0]["kind"] != "judge":
+                    index = judges[0]
                 if index < len(criteria) and criteria[index]["kind"] == "judge":
                     runtime.put(db, "judge:" + str(index), {"verdict": match[2], "evidence": match[3],
                         "rubric": criteria[index]["rubric"], "artifacts": artifacts(brief), "agent_id": event.get("agent_id")})

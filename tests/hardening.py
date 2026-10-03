@@ -94,6 +94,29 @@ class ReleaseTests(unittest.TestCase):
         (self.root/'package-lock.json').write_text('{}')
         self.assertEqual(quality.defaults(self.root)[2],'npm ci')
 
+    def test_project_tests_can_be_owned_without_maintenance(self):
+        runtime.atomic(self.root/'.quickship/manifest.sha256','checksum  tests/hardening.py\n')
+        self.register()
+        runtime.atomic(self.root/'docs/ledgers/task.json',{'plan':[{'slug':'work','owns':['tests/test_app.py']}]})
+        policy.check(self.event(tool='Write',path='.claude/worktrees/work/tests/test_app.py',agent='worker'))
+        self.assertFalse(policy.harness_file('tests/test_app.py'))
+        self.assertTrue(policy.harness_file('tests/hardening.py'))
+
+    def test_directory_judge_evidence_changes_with_contents(self):
+        (self.root/'src').mkdir();(self.root/'src/module.py').write_text('one')
+        self.b['mission']['deliverables']=['src/']
+        first=agent_hook.artifacts(self.b)
+        (self.root/'src/module.py').write_text('two')
+        self.assertNotEqual(first,agent_hook.artifacts(self.b))
+
+    def test_independent_criteria_check_preserves_committed_ledger(self):
+        runtime.atomic(self.root/'docs/ledgers/criteria.json',{'producer':'original evidence'})
+        subprocess.run(['git','add','docs/ledgers/criteria.json'],cwd=self.root,check=True)
+        subprocess.run(['git','-c','user.name=Test','-c','user.email=test@example.invalid','commit','-qm','evidence'],cwd=self.root,check=True)
+        self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],1)
+        self.assertEqual(quality.git(self.root,'diff','--name-only','HEAD'),'')
+        self.assertEqual(runtime.load(self.root/'docs/ledgers/criteria.json'),{'producer':'original evidence'})
+
     def test_operator_permissions(self):
         with self.assertRaises(policy.Denied):
             policy.authorize('git push origin mission/test', self.b)
@@ -352,6 +375,14 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],1)
         (self.root/'README.md').write_text('changed after review')
         self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['failed'],1)
+
+    def test_single_judge_zero_ordinal_is_unambiguous(self):
+        self.b['success_criteria']=[{'kind':'file','path':'README.md'},{'kind':'judge','rubric':'README is accurate'}]
+        runtime.atomic(runtime.state()/'controller.json',self.config)
+        self.register(aid='reviewer-1')
+        agent_hook.handle({'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
+                           'last_assistant_message':'PASS\njudge 0: PASS: hello'})
+        self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],2)
 
     def test_deliverable_path_escape(self):
         self.b['mission']['deliverables'] = ['../missing.md']

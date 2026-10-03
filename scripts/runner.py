@@ -137,7 +137,6 @@ def agents(root):
 
 
 def verify_criteria(root, brief, config):
-    old = runtime.load(root / "docs/ledgers/criteria.json", {"results": []})
     results = []
     for index, criterion in enumerate(brief["success_criteria"]):
         if criterion["kind"] == "judge":
@@ -152,7 +151,6 @@ def verify_criteria(root, brief, config):
             status, detail = check_criteria.evaluate(criterion, root)
         results.append({"kind": criterion["kind"], "status": status, "detail": detail})
     data = check_criteria.recount(results)
-    runtime.atomic(root / "docs/ledgers/criteria.json", data)
     return data
 
 
@@ -225,7 +223,8 @@ def finalize(root, config):
     missing = []
     for name in b["mission"]["deliverables"]:
         path = policy.resolve_path(name, root)
-        if not policy.inside(path, root) or not path.is_file():
+        tracked = run(["git", "ls-files", "--", name], root)
+        if not policy.inside(path, root) or not path.exists() or not tracked:
             missing.append(name)
     head = run(["git", "rev-parse", "HEAD"], root)
     with runtime.transaction() as db:

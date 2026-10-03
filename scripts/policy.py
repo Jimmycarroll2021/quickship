@@ -325,6 +325,10 @@ def check_write(path, cwd, agent, event, brief):
 def harness_file(rel):
     if rel.startswith(".claude/worktrees/"):
         return False
+    manifest = runtime.root() / ".quickship/manifest.sha256"
+    if manifest.is_file() and rel.startswith(("scripts/", "tests/")):
+        managed = {line.split("  ", 1)[1] for line in manifest.read_text(encoding="utf-8").splitlines() if "  " in line}
+        return rel in managed
     return rel.startswith(("scripts/", ".claude/", "tests/", ".quickship/")) or rel in (
         "CLAUDE.md", "VERSION", "run.cmd", "program.cmd", "idea.cmd", "init.cmd")
 
