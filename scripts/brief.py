@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import subprocess
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -230,6 +231,10 @@ def validate_structure(raw):
     deliverables = mission.get("deliverables")
     if not isinstance(deliverables, list) or not deliverables:
         raise BriefError("mission.deliverables")
+    # optional: the branch a chained mission starts from and opens its PR against (set by scripts/program.sh)
+    base = mission.get("base")
+    if base is not None and (not isinstance(base, str) or not re.match(r"^[A-Za-z0-9._/-]+$", base)):
+        raise BriefError("mission.base", "mission.base must be a branch name")
 
     raw_criteria = raw.get("success_criteria")
     if not isinstance(raw_criteria, list) or not raw_criteria:
@@ -301,7 +306,7 @@ def validate_structure(raw):
         raise BriefError("ambiguity_policy")
 
     return {
-        "mission": {"goal": goal, "deliverables": list(deliverables)},
+        "mission": dict({"goal": goal, "deliverables": list(deliverables)}, **({"base": base} if base else {})),
         "success_criteria": criteria,
         "budgets": budgets,
         "permissions": {"irreversible": {"default": default, "allow": allow}},
@@ -382,6 +387,23 @@ def cmd_validate(args):
     return 0
 
 
+def cmd_check(args):
+    """Validate brief files without touching run state. Exit 0 if all pass, 2 if any fails."""
+    status = 0
+    for path in args.files:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                validate_structure(load_yaml(f.read()))
+            print(f"brief: ok {path}")
+        except OSError as e:
+            print(f"brief: cannot read {path}: {e.strerror}", file=sys.stderr); status = 2
+        except BriefError as e:
+            print(f"brief: {path}: {e.msg}", file=sys.stderr); status = 2
+        except Exception as e:
+            print(f"brief: invalid YAML in {path}: {e}", file=sys.stderr); status = 2
+    return status
+
+
 def cmd_show(args):
     path = brief_json_path()
     if not os.path.exists(path):
@@ -398,10 +420,14 @@ def main():
     pv = sub.add_parser("validate")
     pv.add_argument("--brief", default=None)
     sub.add_parser("show")
+    pc = sub.add_parser("check")
+    pc.add_argument("files", nargs="+")
     args = parser.parse_args()
 
     if args.cmd == "validate":
         return cmd_validate(args)
+    if args.cmd == "check":
+        return cmd_check(args)
     return cmd_show(args)
 
 
