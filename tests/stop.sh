@@ -54,4 +54,14 @@ r5="$(tmpdir)"; mk "$r5"; mkdir -p "$r5/.claude/state"; printf '{}' > "$r5/.clau
 expect_exit "overseer role: stop never blocks" 0 bash -c "cd '$r5' && CLAUDE_PROJECT_DIR='$r5' QS_ROLE=overseer bash '$ROOT/scripts/hooks/stop.sh' <<<'$stop_json'"
 [ -z "$(attempts "$r5")" ] && ok "overseer role: stop_attempts untouched" || bad "overseer role: stop_attempts=$(attempts "$r5")"
 [ ! -f "$r5/docs/RUN_STATE" ] && ok "overseer role: no RUN_STATE written" || bad "overseer role: RUN_STATE was written"
+
+# --- strategist role (scripts/idea.sh): no mission run, so no gate; proven by a secret the gate would catch ---
+r6="$(tmpdir)"; mk "$r6"
+printf '%s%s\n' AKIA ABCDEFGHIJKLMNOP > "$r6/untracked_secret.txt"   # split so this file never contains the key
+expect_exit "negative control: lead role with secret file, gate fails" 2 run_stop "$r6" "$stop_json"
+expect_exit "strategist role: exit 0, gate not run" 0 bash -c "cd '$r6' && CLAUDE_PROJECT_DIR='$r6' QS_ROLE=strategist bash '$ROOT/scripts/hooks/stop.sh' <<<'$stop_json'"
+mkdir -p "$r6/.claude/state"; printf '{}' > "$r6/.claude/state/brief.json"
+expect_exit "strategist role with a run's brief.json: never blocks" 0 bash -c "cd '$r6' && CLAUDE_PROJECT_DIR='$r6' QS_ROLE=strategist bash '$ROOT/scripts/hooks/stop.sh' <<<'$stop_json'"
+[ -z "$(attempts "$r6")" ] && ok "strategist role: stop_attempts untouched" || bad "strategist role: stop_attempts=$(attempts "$r6")"
+[ ! -f "$r6/docs/RUN_STATE" ] && ok "strategist role: no RUN_STATE written" || bad "strategist role: RUN_STATE was written"
 finish
