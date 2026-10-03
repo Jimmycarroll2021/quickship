@@ -62,6 +62,17 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(code,0)
         self.assertEqual(calls[0][calls[0].index('--resume')+1],'previous-session')
 
+    def test_resume_restores_only_controller_report_changes(self):
+        report=self.root/'docs/REPORT.md'
+        runtime.atomic(report,'# Lead report\n\nEvidence remains.\n')
+        runner.finish(self.root,'ERROR','publication unavailable')
+        runner.restore_controller_report(self.root)
+        self.assertEqual(report.read_text(),'# Lead report\n\nEvidence remains.\n')
+        runner.finish(self.root,'SAFE_STOP','interrupted')
+        report.write_text(report.read_text()+'User addition.\n')
+        runner.restore_controller_report(self.root)
+        self.assertTrue(report.read_text().endswith('User addition.\n'))
+
     def test_done_returns_without_model(self):
         runtime.atomic(self.root/'docs/COMPLETION.json',{'schema':3,'state':'DONE'})
         code,calls=self.call_main()

@@ -63,9 +63,21 @@ def finish(root, state, reason, details=None):
     heading = "# Verified mission outcome\n\nState: **" + state + "**\n\nReason: " + reason + "\n\n"
     if details:
         heading += "```json\n" + json.dumps(details, indent=2) + "\n```\n\n"
-    runtime.atomic(report, heading + "<!-- quickship-controller-end -->\n\n" + previous)
+    rendered = heading + "<!-- quickship-controller-end -->\n\n" + previous
+    with runtime.transaction() as db:
+        runtime.put(db, "controller-report", {"body": previous, "rendered": rendered})
+    runtime.atomic(report, rendered)
     print("run: state=" + state + " reason=" + reason, flush=True)
     return EXITS[state]
+
+
+def restore_controller_report(root):
+    """Undo only our exact last heading before handing a resumed report to the lead."""
+    report = root / "docs/REPORT.md"
+    with runtime.transaction() as db:
+        record = runtime.get(db, "controller-report", {})
+    if record and report.exists() and report.read_text(encoding="utf-8") == record["rendered"]:
+        runtime.atomic(report, record["body"])
 
 
 def terminate(proc):
@@ -297,6 +309,7 @@ def main():
             return finish(root, "SAFE_STOP", "restart limit (5) reached")
         if attempts > 1:
             time.sleep(min(float(os.environ.get("QS_SLEEP", 2 ** (attempts - 1))), remaining(config)))
+        restore_controller_report(root)
         sid_path = runtime.state() / "session_id"
         sid = sid_path.read_text().strip() if sid_path.exists() else ""
         settings = runtime.load(root / ".claude/settings.json")
