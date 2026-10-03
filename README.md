@@ -214,6 +214,7 @@ These missions ran unattended on real repos. The figures were recomputed from th
 | A CPU-only private RAG app over three PDFs (llama.cpp, GGUF, sqlite) | `DONE`, PR with 2,134 lines. The lead added a fourth task after a weak eval | 72 min | 288 | 0.68M + 12.9M |
 | A docs task in a project installed by `init.sh` | `DONE_PARTIAL`. It hit its 30-minute limit after losing about 10 minutes to permission denials | 30 min | 82 | 0.20M + 2.7M |
 | The same kind of task after the v0.1.0 fixes | `DONE`. The judge was graded on the critic's own test run | 9 min | 74 | 0.14M + 2.8M |
+| **Idea to MVP:** a paragraph about an offline GPX ride-summary CLI through `idea.sh` and `program.sh` | PRD, 4 missions, all `DONE`, a stack of 4 PRs (+1,618 lines, 46 tests). The security reviewer caught one finding, which was fixed before the PR | 44 min | 563 | 1.22M + 14.5M |
 
 The leads ran on Claude Fable 5.1, and the workers and reviewers on Sonnet. What you pay depends on your model and plan. The RAG app was built in a private repo, but its brief and constraints are in [examples/briefs/](examples/briefs/).
 

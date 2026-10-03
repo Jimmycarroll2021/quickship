@@ -11,6 +11,10 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 - **QA.** A read-only `security` reviewer runs on every mission's diff, and its high and medium findings become tasks. Workers must ship a test with every behaviour change, and the reviewer fails code changes that have none. UI missions written by the strategist carry a Playwright criterion.
 - **Windows wrappers:** `idea.cmd` and `program.cmd`. New template: `IDEA.example.md`.
 
+### Verified
+
+- From idea to MVP, unattended. A one-paragraph idea, an offline CLI that summarises GPX bike rides by ISO week, became a PRD and four mission briefs in 93 seconds. The four missions then ran back to back, and all ended `DONE` in 41 minutes. The result is a stack of four PRs adding 1,618 lines, with 46 passing tests, clean lint and a working CLI. On the third mission the security reviewer raised a finding, and the lead fixed it before opening the PR. Across all sessions the run made 563 tool calls and used 1.22M uncached tokens plus 14.5M cache reads.
+
 ## [0.1.1] - 2026-10-03
 
 ### Fixed
