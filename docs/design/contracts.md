@@ -70,6 +70,8 @@ ambiguity_policy: choose-default-and-record
 
 brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list), `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
 
+
+`validate` is the mission boundary: when the goal in the new brief differs from the goal already in `brief.json`, it deletes the gitignored runtime state (`started_at`, `session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`) and prints `brief: new mission goal; runtime state reset`, so a new mission never inherits the previous run's clock, step count or session. The same goal is a resume and leaves the state untouched.
 ## Ledgers
 
 `docs/ledgers/task.json`:
