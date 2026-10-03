@@ -181,6 +181,7 @@ fi
 tier="$(cat "$S/tier" 2>/dev/null)"; tier="${tier//[$'\r\n ']/}"
 if [ "$tier" = plan ]; then
   case "$tool" in
+    Agent) ;;
     Read|Glob|Grep) ;;
     Write|Edit|MultiEdit) [[ "$arg" =~ (^|/)(docs/plan\.md|docs/ledgers/|\.claude/state/) ]] || deny "plan tier: cannot write $arg";;
     Bash)
