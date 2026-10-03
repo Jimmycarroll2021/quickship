@@ -265,7 +265,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(budget.incremental_usage(str(p))[0], 3)
         self.assertEqual(budget.incremental_usage(str(p))[0], 3)
         p.write_text(json.dumps({'message':{'id':'two','usage':{'input_tokens':7}}})+'\n')
-        self.assertEqual(budget.incremental_usage(str(p))[0], 7)
+        self.assertEqual(budget.incremental_usage(str(p))[0], 10)
+        p.unlink()
+        self.assertEqual(budget.incremental_usage(str(p))[0], 10)
 
     def test_budget_attempts_exactly_once(self):
         tp = self.root / 'usage.jsonl';tp.write_text('{}\n')

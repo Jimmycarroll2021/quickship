@@ -134,8 +134,6 @@ def incremental_usage(path):
             paths.append(path)
             runtime.put(db, "transcripts", paths)
         files = sorted({p for t in paths for p in transcript_files(normalize_path(t))})
-        seen = set()
-        total, reads, cost = 0, 0, 0.0
         for file in files:
             with open(file, "rb") as f:
                 fingerprint = hashlib.sha256(f.read(256)).hexdigest()
@@ -145,7 +143,9 @@ def incremental_usage(path):
                 # Prefix can grow while a small file is being written. Only compare
                 # fingerprints once the previous prefix was at least 256 bytes.
                 if size < record["offset"] or (record["offset"] >= 256 and record["fingerprint"] != fingerprint):
-                    record = {"offset": 0, "messages": {}, "fingerprint": fingerprint}
+                    record["offset"] = 0
+                    record["fingerprint"] = fingerprint
+                    record["generation"] = record.get("generation", 0) + 1
                 f.seek(record["offset"])
                 while True:
                     at = f.tell()
@@ -158,23 +158,26 @@ def incremental_usage(path):
                         u = message.get("usage")
                         if not isinstance(u, dict):
                             continue
-                        mid = message.get("id") or file + ":" + str(at)
+                        mid = message.get("id") or file + ":" + str(record.get("generation", 0)) + ":" + str(at)
                         i, o = int(u.get("input_tokens") or 0), int(u.get("output_tokens") or 0)
                         cc, cr = int(u.get("cache_creation_input_tokens") or 0), int(u.get("cache_read_input_tokens") or 0)
                         rin, rout = rates_for(message.get("model"))
-                        record["messages"][mid] = [i + o + cc, cr, (i * rin + o * rout + cc * rin * 1.25 + cr * rin * .1) / 1e6]
+                        values = [i + o + cc, cr, (i * rin + o * rout + cc * rin * 1.25 + cr * rin * .1) / 1e6]
+                        previous = record["messages"].get(mid, [0, 0, 0])
+                        record["messages"][mid] = [max(a, b) for a, b in zip(previous, values)]
                     except (ValueError, TypeError, AttributeError):
                         continue
                 record["offset"] = f.tell()
                 record["fingerprint"] = fingerprint
                 runtime.put(db, key, record)
-                for mid, vals in record["messages"].items():
-                    if mid not in seen:
-                        total += vals[0]
-                        reads += vals[1]
-                        cost += vals[2]
-                        seen.add(mid)
-        return total, reads, cost
+        # Keep charges from cached files that have been rotated or removed. A replayed
+        # message ID counts once; later usage updates can increase, never lower it.
+        charged = {}
+        for row in db.execute("SELECT value FROM kv WHERE key LIKE 'usage:%'"):
+            for mid, values in json.loads(row[0])["messages"].items():
+                prior = charged.get(mid, [0, 0, 0])
+                charged[mid] = [max(a, b) for a, b in zip(prior, values)]
+        return tuple(sum(values[i] for values in charged.values()) for i in range(3))
 
 
 def elapsed_min(started_at):
