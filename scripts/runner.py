@@ -44,8 +44,11 @@ def hashes(root):
     for directory in ("scripts", ".claude/agents"):
         paths += [str(p.relative_to(root)).replace("\\", "/") for p in (root / directory).rglob("*")
                   if p.is_file() and "__pycache__" not in p.parts]
-    return {p: hashlib.sha256((root / p).read_bytes()).hexdigest() for p in set(paths)
-            if (policy.harness_file(p) or p == "BRIEF.yaml") and (root / p).is_file()}
+    result = {p: hashlib.sha256((root / p).read_bytes()).hexdigest() for p in set(paths)
+              if (policy.harness_file(p) or p == "BRIEF.yaml") and (root / p).is_file()}
+    origin = run(["git", "remote", "get-url", "origin"], root, check=False)
+    result["__origin__"] = hashlib.sha256(origin.encode()).hexdigest()
+    return result
 
 
 def finish(root, state, reason, details=None):
@@ -155,7 +158,9 @@ def verify_criteria(root, brief, config):
 
 def publish(root, config, branch, head):
     brief = config["brief"]
-    base = brief["mission"].get("base") or run(["gh", "repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], root)
+    repository = config.get("repository")
+    repo_flags = ["--repo", repository] if repository else []
+    base = brief["mission"].get("base") or run(["gh", "repo", "view", *([repository] if repository else []), "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], root)
     if branch == base or not re.fullmatch(r"mission/[a-z0-9][a-z0-9/-]*", branch):
         raise policy.Denied("publish requires a mission branch")
     policy.authorize("git push origin " + branch, brief)
@@ -173,7 +178,7 @@ def publish(root, config, branch, head):
     if not remote or remote.split()[0] != head:
         run(["git", "push", "origin", branch], root, timeout=remaining(config))
     prs = json.loads(run(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
-                         "--json", "url,headRefOid,headRefName,baseRefName"], root))
+                         "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) > 1:
         raise ValueError("multiple matching PRs; refusing duplicate publication")
     if not prs:
@@ -181,9 +186,9 @@ def publish(root, config, branch, head):
         runtime.atomic(body, "Mission: " + brief["mission"]["goal"] +
                        "\n\nThe controller independently verified the final gate, success criteria, deliverables and security review.\n")
         run(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
-             "--body-file", str(body)], root, timeout=remaining(config))
+             "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
         prs = json.loads(run(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
-                             "--json", "url,headRefOid,headRefName,baseRefName"], root))
+                             "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) != 1 or prs[0]["headRefOid"] != head or prs[0]["headRefName"] != branch or prs[0]["baseRefName"] != base:
         raise ValueError("PR head/base/SHA verification failed")
     remote = run(["git", "ls-remote", "origin", "refs/heads/" + branch], root)
@@ -268,7 +273,7 @@ def main():
         if not config:
             started = dt.datetime.fromisoformat((runtime.state() / "started_at").read_text().strip().replace("Z", "+00:00")).timestamp()
             config = {"schema": 3, "brief": b, "deadline": started + b["budgets"]["wall_clock_min"] * 60,
-                      "hashes": hashes(root), "auth": check["auth"]}
+                      "hashes": hashes(root), "auth": check["auth"], "repository": check.get("repository")}
             runtime.atomic(runtime.state() / "controller.json", config)
         terminal = runtime.load(root / "docs/COMPLETION.json")
         if terminal and terminal.get("schema") == 3 and terminal["state"] in ("DONE", "HALT"):
@@ -277,6 +282,16 @@ def main():
             return finish(root, "HALT", "active harness or brief changed before resume")
         if time.time() >= config["deadline"]:
             return finish(root, "DONE_PARTIAL", "wall-clock deadline exceeded")
+        used_steps = int(budget.read_text(runtime.state() / "steps") or "0")
+        if used_steps >= b["budgets"]["steps"]:
+            return finish(root, "DONE_PARTIAL", "step budget exhausted before launch")
+        remembered = budget.normalize_path(budget.read_text(runtime.state() / "transcript_path"))
+        if remembered:
+            if not Path(remembered).is_file():
+                return finish(root, "SAFE_STOP", "saved transcript missing; resume accounting unavailable")
+            used_tokens, _, used_cost = budget.incremental_usage(remembered)
+            if used_tokens >= b["budgets"]["tokens"] or used_cost >= b["budgets"]["cost_usd"]:
+                return finish(root, "DONE_PARTIAL", "resource budget exhausted before launch")
         with runtime.transaction() as db:
             attempts = runtime.increment(db, "launches")
         if attempts > 5:
@@ -310,11 +325,14 @@ def main():
             if sid:
                 args += ["--resume", sid]
             if check["auth"].get("authMethod") != "claude.ai":
-                budget = 0.0
+                api_used_cost = 0.0
                 if (runtime.state() / "transcript_path").exists():
                     data = json.loads(run([sys.executable, "scripts/budget.py"], root))
-                    budget = data["cost_usd"]
-                args += ["--max-budget-usd", str(max(.01, b["budgets"]["cost_usd"] - budget))]
+                    api_used_cost = data["cost_usd"]
+                allowance = b["budgets"]["cost_usd"] - api_used_cost
+                if allowance < .01:
+                    return finish(root, "DONE_PARTIAL", "API budget remaining is below one cent")
+                args += ["--max-budget-usd", str(allowance)]
             env = dict(os.environ, CLAUDE_PROJECT_DIR=str(root), QS_HARNESS_ROOT=str(frozen),
                        CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS="1")
             ov = None

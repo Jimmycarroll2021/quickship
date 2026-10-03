@@ -96,10 +96,21 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['state'],'SAFE_STOP')
 
     def test_killed_run_recovers_transcript_session(self):
-        runtime.atomic(runtime.state()/'transcript_path',r'C:\Users\test\session-abcd.jsonl')
+        transcript=runtime.state()/'session-abcd.jsonl';transcript.write_text('{}\n')
+        runtime.atomic(runtime.state()/'transcript_path',str(transcript))
         code,_=self.call_main(lead_rc=137,payload={})
         self.assertEqual(code,3)
         self.assertEqual((runtime.state()/'session_id').read_text().strip(),'session-abcd')
+
+    def test_missing_saved_transcript_stops_before_model(self):
+        runtime.atomic(runtime.state()/'transcript_path',str(self.root/'missing.jsonl'))
+        code,calls=self.call_main()
+        self.assertEqual((code,len(calls)),(3,0))
+
+    def test_exhausted_steps_stop_before_model(self):
+        runtime.atomic(runtime.state()/'steps','1000')
+        code,calls=self.call_main()
+        self.assertEqual((code,len(calls)),(3,0))
 
     def test_process_success_propagates_verification_failure(self):
         code,_=self.call_main(finalize_rc=5)

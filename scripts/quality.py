@@ -42,7 +42,13 @@ def defaults(root):
         package = json.loads((root / "package.json").read_text(encoding="utf-8"))
         pm = "pnpm" if (root / "pnpm-lock.yaml").exists() else "yarn" if (root / "yarn.lock").exists() else "bun" if any(root.glob("bun.lock*")) else "npm"
         commands = {k: pm + " run " + k if package.get("scripts", {}).get(k) else None for k in ("lint", "test", "build")}
-        return "node", commands, pm + " install"
+        dependencies = any(package.get(k) for k in ("dependencies", "devDependencies", "optionalDependencies"))
+        install = None
+        if dependencies:
+            install = pm + " install"
+            if pm == "npm":
+                install = "npm ci" if (root / "package-lock.json").exists() else "npm install --package-lock=false"
+        return "node", commands, install
     if (root / "pyproject.toml").exists() or (root / "requirements.txt").exists():
         prefix = "uv run " if (root / "uv.lock").exists() else ""
         build = (root / "pyproject.toml").exists() and "[build-system]" in (root / "pyproject.toml").read_text(encoding="utf-8")

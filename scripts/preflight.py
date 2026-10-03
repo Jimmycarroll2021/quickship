@@ -51,7 +51,12 @@ def inspect(root):
             if flag not in help_text:
                 errors.append("Claude lacks " + flag)
         command(["gh", "auth", "status"], root)
-        command(["git", "remote", "get-url", "origin"], root)
+        origin = command(["git", "remote", "get-url", "origin"], root).strip()
+        repo = re.fullmatch(r"(?:https://github\.com/|git@github\.com:)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?", origin)
+        if not repo:
+            errors.append("origin must use a canonical github.com HTTPS or SSH repository URL")
+        else:
+            data["repository"] = repo[1]
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         errors.append(str(exc))
     try:

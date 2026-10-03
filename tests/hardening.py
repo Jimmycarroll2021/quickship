@@ -71,7 +71,28 @@ class ReleaseTests(unittest.TestCase):
     def test_agent_cannot_publish(self):
         self.b['permissions']['irreversible']['default'] = 'allow'
         for cmd in ('git push origin mission/test', 'gh pr create --title test', 'npm publish'):
+                self.deny(self.event(cmd))
+
+    def test_agent_cannot_retarget_origin_or_inject_git_alias(self):
+        for cmd in ('git remote set-url origin https://github.com/other/repo.git',
+                    'git -c alias.send=push send origin mission/test',
+                    'git config remote.origin.url https://github.com/other/repo.git'):
             self.deny(self.event(cmd))
+
+    def test_origin_change_breaks_integrity(self):
+        before=runner.hashes(self.root)
+        subprocess.run(['git','remote','add','origin','https://github.com/example/other.git'],cwd=self.root,check=True)
+        self.assertNotEqual(before,runner.hashes(self.root))
+
+    def test_dependency_free_node_gate_does_not_create_a_lockfile(self):
+        (self.root/'package.json').write_text(json.dumps({'scripts':{'lint':'echo lint','test':'echo test','build':'echo build'}}))
+        self.assertIsNone(quality.defaults(self.root)[2])
+
+    def test_node_dependency_install_uses_existing_lock(self):
+        (self.root/'package.json').write_text(json.dumps({'dependencies':{'example':'1.0.0'}}))
+        self.assertEqual(quality.defaults(self.root)[2],'npm install --package-lock=false')
+        (self.root/'package-lock.json').write_text('{}')
+        self.assertEqual(quality.defaults(self.root)[2],'npm ci')
 
     def test_operator_permissions(self):
         with self.assertRaises(policy.Denied):

@@ -179,6 +179,17 @@ def check(event):
                 raise Denied("alternate shell disabled; use Git Bash")
             if executable == "git":
                 a = git_args(ts)
+                if active and a:
+                    if any(x == "-c" or x.startswith(("-c", "--config-env")) for x in ts[1:]):
+                        raise Denied("per-command git configuration overrides are disabled")
+                    if a[0] in ("reset", "rebase", "update-ref", "symbolic-ref"):
+                        raise Denied("history/ref rewriting is prohibited")
+                    if a[0] == "remote" and (len(a) < 2 or a[1] not in ("-v", "get-url", "show")):
+                        raise Denied("origin configuration is frozen")
+                    if a[0] == "config" and not any(x in a for x in ("--get", "--get-all", "--list", "-l")):
+                        raise Denied("git configuration is frozen")
+                    if a[0] in ("checkout", "switch", "branch") and any(x in ("main", "master", "refs/heads/main", "refs/heads/master") for x in a[1:]) and not any(x in a for x in ("-b", "-c")):
+                        raise Denied("protected branch mutation")
                 if a and a[0] == "push":
                     if any(x.startswith("--force") or x == "-f" or x.startswith("+") for x in a[1:]):
                         raise Denied("force push")
