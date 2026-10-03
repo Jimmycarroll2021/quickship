@@ -17,6 +17,7 @@ t="$(tmpdir)/proj"
 expect_exit "fresh target exits 0" 0 bash "$INIT" "$t"
 expect_contains "fresh install reports adds" "add: scripts/gate.sh" "$OUT"
 expect_contains "fresh install prints next steps" "next: edit BRIEF.yaml" "$OUT"
+expect_contains "fresh install points at the idea path" "from a raw idea" "$OUT"
 missing=""
 for f in $(manifest_files "$ROOT"); do [ -f "$t/$f" ] || missing="$missing $f"; done
 [ -z "$missing" ] && ok "every manifest file installed" || bad "missing in target:$missing"

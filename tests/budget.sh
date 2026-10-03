@@ -55,7 +55,8 @@ expect_contains "subagents/ transcripts summed, another session's ignored" '"tok
 rm -rf "$T/sess" "$T/other"
 # a model missing from the rate table is priced at the highest known rate: a spending cap must err high, not low
 echo '{"type":"assistant","message":{"id":"u1","model":"claude-newtier-9","usage":{"input_tokens":1000000,"output_tokens":0}}}' > "$T/unknown.jsonl"
-out="$(budget --transcript "$T/unknown.jsonl")"; out="${out//$''/}"
+out="$(budget --transcript "$T/unknown.jsonl")"; out="${out//$'
+'/}"
 expect_contains "unknown model priced at the highest rate" '"cost_usd": 15.0,' "$out"
 rm -f "$T/unknown.jsonl"
 
@@ -118,6 +119,10 @@ write_brief 1000000 100 1000 10; echo 99 > "$S/steps"
 expect_exit "overseer role: exhausted Bash still allowed" 0 env QS_ROLE=overseer bash "$ROOT/scripts/hooks/budget.sh" <<< "$(pre_bash "tail -n 20 docs/ledgers/progress.jsonl")"
 QS_ROLE=overseer bash "$ROOT/scripts/hooks/budget.sh" <<< '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}' >/dev/null 2>&1
 [ "$(tr -dc '0-9' < "$S/steps")" = "99" ] && ok "overseer role: steps not counted" || bad "overseer role: steps=$(cat "$S/steps")"
+# strategist (scripts/idea.sh) is not part of any mission: a stale brief.json must not gate or count it
+expect_exit "strategist role: exhausted Bash still allowed" 0 env QS_ROLE=strategist bash "$ROOT/scripts/hooks/budget.sh" <<< "$(pre_bash "python3 scripts/brief.py check docs/missions/01-a.yaml")"
+QS_ROLE=strategist bash "$ROOT/scripts/hooks/budget.sh" <<< '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}' >/dev/null 2>&1
+[ "$(tr -dc '0-9' < "$S/steps")" = "99" ] && ok "strategist role: steps not counted" || bad "strategist role: steps=$(cat "$S/steps")"
 
 # --- transcript path memory: the hook remembers the transcript path across calls ---
 write_brief 1000000 100 1000 1000; echo 0 > "$S/steps"

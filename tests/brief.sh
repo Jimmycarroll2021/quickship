@@ -92,4 +92,24 @@ expect_contains "runtime reset: started_at is fresh" "$(date -u +%Y-%m-%d)" "$(c
 for f in steps session_id cancel legs; do [ ! -e "$CLAUDE_PROJECT_DIR/.claude/state/$f" ] && ok "runtime reset: $f removed" || bad "runtime reset: $f removed"; done
 expect_contains "runtime reset: brief.json has the new goal" "A different mission" "$(cat "$SJSON")"
 
+# --- check: validates any brief file without touching run state (used by idea.sh on generated mission briefs) ---
+rm -f "$SJSON"
+expect_exit "check: example passes" 0 py check "$BRIEF"
+expect_contains "check: names the file" "ok" "$OUT"
+expect_exit "check: writes no brief.json" 1 test -f "$SJSON"
+expect_exit "check: bad brief -> exit 2" 2 py check "$BAD1"
+expect_contains "check: names the bad key" "budgets.steps" "$OUT"
+expect_exit "check: several files, one bad -> exit 2" 2 py check "$BRIEF" "$BAD1"
+
+# --- optional mission.base: the branch a chained mission builds on and opens its PR against ---
+BASED="$CLAUDE_PROJECT_DIR/based.yaml"
+awk '{print} /^  goal:/{print "  base: \"mission/first-mission\""}' "$BRIEF" > "$BASED"
+expect_exit "base: validates" 0 py validate --brief "$BASED"
+expect_contains "base: kept in brief.json" '"base": "mission/first-mission"' "$(cat "$SJSON")"
+expect_exit "no base: validates" 0 py validate --brief "$BRIEF"
+[[ "$(cat "$SJSON")" == *'"base"'* ]] && bad "no base: brief.json has no base key" || ok "no base: brief.json has no base key"
+BADBASE="$CLAUDE_PROJECT_DIR/badbase.yaml"
+awk '{print} /^  goal:/{print "  base: \"bad branch name\""}' "$BRIEF" > "$BADBASE"
+expect_exit "base with a space -> exit 2" 2 py check "$BADBASE"
+expect_contains "base error names mission.base" "mission.base" "$OUT"
 finish

@@ -91,5 +91,6 @@ mkdir -p "$T/.quickship"
 printf '%s' "$new_manifest" > "$T/.quickship/manifest.sha256"
 
 echo "next: edit BRIEF.yaml, commit it, then: bash scripts/run.sh  (Windows PowerShell: .\run.cmd)"
+echo "  or, from a raw idea: write IDEA.md (see IDEA.example.md), then: bash scripts/idea.sh, then: bash scripts/program.sh"
 [ "$changed" = 0 ] && [ "$skipped" = 0 ] && echo "unchanged"
 exit 0

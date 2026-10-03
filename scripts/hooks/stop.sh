@@ -5,7 +5,9 @@
 # Input: hook JSON on stdin (fails closed: malformed -> exit 2). Exit 0 = allow stop, exit 2 = block.
 set -u
 # The overseer runs its own claude -p session in this repo; it must never block or decide the mission state.
-[ "${QS_ROLE:-lead}" = overseer ] && exit 0
+# The strategist (scripts/idea.sh) writes a PRD and mission briefs before any run exists: there is no mission to
+# gate, and the full gate (in this repo, the harness self-test) would cost minutes per stop. Guard rules still apply.
+case "${QS_ROLE:-lead}" in overseer|strategist) exit 0;; esac
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
 in="$(cat)"
 printf '%s' "$in" | "$PY" -c 'import json, sys; json.load(sys.stdin)' >/dev/null 2>&1 \

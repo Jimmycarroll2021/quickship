@@ -2,6 +2,19 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
+## [0.2.0] - 2026-10-03
+
+### Added
+
+- **Idea to missions.** `scripts/idea.sh` runs a strategist agent once over `IDEA.md`. It writes `docs/PRD.md`, covering the user, the pain, the riskiest assumptions and the MVP scope, plus two to five sequenced mission briefs with testable criteria. `brief.py check` validates them without touching run state.
+- **Mission chains.** `scripts/program.sh` runs the mission briefs in order. Each mission starts from the previous mission's branch and opens its PR against it through the new `mission.base` brief field, so you get a stack of PRs to review and merge. The chain stops at the first mission that isn't `DONE`, and resumes by skipping finished ones. `diffbase.sh` honours `mission.base`, so reviews see only the current mission.
+- **QA.** A read-only `security` reviewer runs on every mission's diff, and its high and medium findings become tasks. Workers must ship a test with every behaviour change, and the reviewer fails code changes that have none. UI missions written by the strategist carry a Playwright criterion.
+- **Windows wrappers:** `idea.cmd` and `program.cmd`. New template: `IDEA.example.md`.
+
+### Verified
+
+- From idea to MVP, unattended. A one-paragraph idea, an offline CLI that summarises GPX bike rides by ISO week, became a PRD and four mission briefs in 93 seconds. The four missions then ran back to back, and all ended `DONE` in 41 minutes. The result is a stack of four PRs adding 1,618 lines, with 46 passing tests, clean lint and a working CLI. On the third mission the security reviewer raised a finding, and the lead fixed it before opening the PR. Across all sessions the run made 563 tool calls and used 1.22M uncached tokens plus 14.5M cache reads.
+
 ## [0.1.1] - 2026-10-03
 
 ### Fixed
@@ -31,5 +44,6 @@ First public release: a Claude Code harness that takes one Mission Brief and shi
 
 Seven unattended missions ran with this release, including a real application and a kill-and-resume run. The figures, recomputed in 0.1.1 from the full transcripts, are in the README under "Track record".
 
+[0.2.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.0
