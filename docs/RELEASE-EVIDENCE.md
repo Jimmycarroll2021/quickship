@@ -8,7 +8,7 @@ Cooperative safeguards for trusted local projects, not an operating-system sandb
 
 ## Automated validation
 
-- Local Python hardening checks: 55 passed (one Windows symlink capability test skipped where unavailable).
+- Local Python hardening checks: 56 passed (one Windows symlink capability test skipped where unavailable).
 - Local controller/provider simulations: 19 passed.
 - Focused legacy budget, gate, installer and stop cases passed after migration to explicit quality configuration.
 - Full suite and Ubuntu/Windows Python 3.10/3.12 CI: pending final run.

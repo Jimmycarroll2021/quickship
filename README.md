@@ -18,9 +18,13 @@ are not release-verified. No Python packages are required by the harness.
 git clone https://github.com/Jimmycarroll2021/quickship
 bash quickship/scripts/init.sh /path/to/project
 cd /path/to/project
-# Edit the seeded BRIEF.yaml for your project and commit it.
-git add BRIEF.yaml
-git commit -m "mission brief"
+# Edit BRIEF.yaml, review git status, and stage the installed harness plus your intended project files.
+# Keep credentials and personal files out of the commit.
+git status --short
+git add BRIEF.yaml .claude/agents .claude/rules .claude/settings.json scripts tests .quickship
+git add CLAUDE.md VERSION .gitattributes .gitignore run.cmd init.cmd idea.cmd program.cmd
+git add BRIEF.example.yaml IDEA.example.md docs/design/contracts.md docs/decisions.md
+git commit -m "Install Quickship and mission brief"
 python scripts/preflight.py
 bash scripts/run.sh
 ```
@@ -29,6 +33,8 @@ Windows PowerShell: `quickship\init.cmd C:\path\to\project`, then `.\run.cmd` in
 The wrappers locate Git Bash. Claude's native PowerShell tool is disabled for missions.
 Resolve any `.quickship/conflicts` before launching. Preflight checks authentication and
 capabilities without model calls or account changes.
+Configure a Git author identity and a canonical github.com origin before running. Installed
+harness files and BRIEF.yaml must be committed so task worktrees receive the same safeguards.
 
 ## Mission brief
 

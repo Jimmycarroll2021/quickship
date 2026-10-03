@@ -37,6 +37,10 @@ def inspect(root):
             errors.append("bash 4+ required")
         data["bash"] = version
         command(["git", "rev-parse", "--show-toplevel"], root)
+        try:
+            command(["git", "var", "GIT_AUTHOR_IDENT"], root)
+        except ValueError:
+            errors.append("git author identity is missing; configure repository user.name and user.email")
         auth = json.loads(command(["claude", "auth", "status"], root))
         data["auth"] = {k: auth.get(k) for k in ("loggedIn", "authMethod", "subscriptionType")}
         if not auth.get("loggedIn"):
@@ -72,6 +76,18 @@ def inspect(root):
             errors.append("v0.2 active state: preserve/archive it before starting v0.3; automatic migration refused")
         if (root / ".quickship/conflicts").exists():
             errors.append("installation conflicts: resolve .quickship/conflicts before running")
+        manifest = root / ".quickship/manifest.sha256"
+        if manifest.is_file():
+            managed = {line.split("  ", 1)[1] for line in manifest.read_text(encoding="utf-8").splitlines() if "  " in line}
+            managed.update(("BRIEF.yaml", ".quickship/manifest.sha256", ".quickship/VERSION"))
+            tracked = set(command(["git", "ls-files"], root).splitlines())
+            missing = sorted(managed - tracked)
+            if missing:
+                errors.append("commit installed harness and BRIEF.yaml before running: " + str(len(missing)) + " required files are untracked")
+            if not runtime.load(root / ".claude/state/controller.json"):
+                dirty = command(["git", "diff", "--name-only", "HEAD", "--", *sorted(managed)], root).splitlines()
+                if dirty:
+                    errors.append("commit installed harness and BRIEF.yaml before running: " + str(len(dirty)) + " required files have uncommitted changes")
     except (BriefError, ValueError, OSError) as exc:
         errors.append("brief: " + str(exc))
     return data

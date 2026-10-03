@@ -102,6 +102,11 @@ class ReleaseTests(unittest.TestCase):
         self.assertFalse(policy.harness_file('tests/test_app.py'))
         self.assertTrue(policy.harness_file('tests/hardening.py'))
 
+    def test_native_reads_cannot_escape_project(self):
+        self.deny(self.event(tool='Read',path='../private.json'))
+        for tool in ('Glob','Grep'):
+            self.deny({'hook_event_name':'PreToolUse','tool_name':tool,'tool_input':{'path':'../','pattern':'*'},'cwd':str(self.root)})
+
     def test_directory_judge_evidence_changes_with_contents(self):
         (self.root/'src').mkdir();(self.root/'src/module.py').write_text('one')
         self.b['mission']['deliverables']=['src/']

@@ -150,6 +150,10 @@ def check(event):
         raise Denied("use a registered Quickship agent type")
     if active and tool != "Bash" and event.get("agent_id") and not bound_step(event):
         raise Denied("subagent must step-bind before work")
+    if active and tool in ("Read", "Glob", "Grep"):
+        target = inp.get("file_path") if tool == "Read" else inp.get("path", ".")
+        if not inside(resolve_path(target, cwd), runtime.root()):
+            raise Denied("read outside project")
     if tool == "PowerShell":
         raise Denied("PowerShell tool disabled; use Git Bash")
     if tool.startswith("mcp__"):
