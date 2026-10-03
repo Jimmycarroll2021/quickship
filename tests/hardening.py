@@ -271,11 +271,47 @@ class ReleaseTests(unittest.TestCase):
             pub.assert_not_called()
 
     def test_security_hook_records_head(self):
+        self.register(aid='security-1')
         agent_hook.handle({'hook_event_name':'SubagentStop','agent_type':'security','agent_id':'security-1','last_assistant_message':'PASS\nchecked diff'})
         with runtime.transaction() as db:
             record = runtime.get(db,'security')
         self.assertEqual(record['verdict'],'PASS')
         self.assertEqual(record['head'],quality.git(self.root,'rev-parse','HEAD'))
+
+    def test_security_review_rejects_head_changed_during_review(self):
+        self.register(aid='security-1')
+        subprocess.run(['git','-c','user.name=Test','-c','user.email=test@example.invalid','commit','--allow-empty','-qm','later'],cwd=self.root,check=True)
+        agent_hook.handle({'hook_event_name':'SubagentStop','agent_type':'security','agent_id':'security-1','last_assistant_message':'PASS'})
+        with runtime.transaction() as db:
+            self.assertEqual(runtime.get(db,'security')['verdict'],'FAIL')
+
+    def test_verified_completion_publishes_once(self):
+        (self.root/'.git/info/exclude').write_text('.claude/state/\n')
+        tp=runtime.state()/'usage.jsonl';tp.write_text('{}\n')
+        runtime.atomic(runtime.state()/'transcript_path',str(tp))
+        runtime.atomic(self.root/'docs/RESULT.json',{'state':'READY'})
+        head=quality.git(self.root,'rev-parse','HEAD')
+        with runtime.transaction() as db:
+            runtime.put(db,'security',{'verdict':'PASS','head':head,'evidence':'PASS checked diff'})
+        with patch.object(quality,'gate',return_value={'pass':True}), patch.object(runner,'verify_criteria',return_value={'failed':0,'deferred':0}), patch.object(runner,'publish',return_value={'url':'https://example.invalid/pr'}) as pub:
+            self.assertEqual(runner.finalize(self.root,self.config),0)
+            pub.assert_called_once()
+
+    def test_final_budget_limit_prevents_publication(self):
+        tp=runtime.state()/'usage.jsonl';tp.write_text('{}\n')
+        runtime.atomic(runtime.state()/'transcript_path',str(tp))
+        runtime.atomic(runtime.state()/'steps','1000')
+        runtime.atomic(self.root/'docs/RESULT.json',{'state':'READY'})
+        with patch.object(runner,'publish') as pub:
+            self.assertEqual(runner.finalize(self.root,self.config),3)
+            pub.assert_not_called()
+
+    def test_worker_transcript_does_not_replace_resume_session(self):
+        tp=self.root/'worker.jsonl';tp.write_text('{}\n')
+        runtime.atomic(runtime.state()/'transcript_path','lead-session.jsonl')
+        e=self.event('git status',agent='worker');e['transcript_path']=str(tp)
+        budget_hook.handle(e)
+        self.assertEqual((runtime.state()/'transcript_path').read_text(),'lead-session.jsonl')
 
     def test_judge_deferred_not_done(self):
         self.b['success_criteria'] = [{'kind':'judge','rubric':'check'}]

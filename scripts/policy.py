@@ -128,6 +128,10 @@ def bind(event, sid):
             raise Denied("step already has an agent")
         runtime.put(db, "agent:" + aid, sid)
         runtime.put(db, "owner:" + sid, aid)
+        if not runtime.get(db, "agent-head:" + aid):
+            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=runtime.root(),
+                                  capture_output=True, text=True, check=True).stdout.strip()
+            runtime.put(db, "agent-head:" + aid, head)
 
 
 def check(event):
@@ -142,6 +146,8 @@ def check(event):
     config = runtime.load(runtime.state() / "controller.json", {})
     brief = config.get("brief") or runtime.load(runtime.state() / "brief.json", {})
     cwd = event.get("cwd") or str(runtime.root())
+    if active and tool == "Agent" and inp.get("subagent_type") not in ("planner", "worker", "reviewer", "security", "researcher"):
+        raise Denied("use a registered Quickship agent type")
     if active and tool != "Bash" and event.get("agent_id") and not bound_step(event):
         raise Denied("subagent must step-bind before work")
     if tool == "PowerShell":

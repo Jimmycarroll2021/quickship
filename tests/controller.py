@@ -23,6 +23,7 @@ class ControllerTests(unittest.TestCase):
     def setup_launcher(self):
         source = Path(__file__).resolve().parents[1]
         shutil.copytree(source/'scripts', self.root/'scripts', ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(source/'.claude/agents', self.root/'.claude/agents')
         runtime.atomic(self.root/'.claude/settings.json', {'permissions':{'allow':['Bash(git status *)']}, 'hooks':{}})
         self.config['hashes'] = runner.hashes(self.root)
         runtime.atomic(runtime.state()/'controller.json', self.config)
@@ -49,7 +50,7 @@ class ControllerTests(unittest.TestCase):
     def test_fresh_start_passes_flags_and_saves_session(self):
         code,calls=self.call_main()
         self.assertEqual(code,0)
-        for flag in ('-p','--permission-prompts','--allowedTools','--strict-mcp-config','--settings','--max-turns'):
+        for flag in ('-p','--permission-prompts','--allowedTools','--strict-mcp-config','--settings','--agents','--max-turns'):
             self.assertIn(flag,calls[0])
         self.assertNotIn('--bare',calls[0])
         self.assertNotIn('--max-budget-usd',calls[0])

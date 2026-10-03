@@ -13,7 +13,8 @@ def handle(event):
         sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=runtime.root(),
                              capture_output=True, text=True, check=True).stdout.strip()
         with runtime.transaction() as db:
-            runtime.put(db, "security", {"verdict": "PASS" if text.strip().startswith("PASS") else "FAIL",
+            reviewed = runtime.get(db, "agent-head:" + str(event.get("agent_id")))
+            runtime.put(db, "security", {"verdict": "PASS" if text.strip().startswith("PASS") and reviewed == sha else "FAIL",
                 "evidence": text, "head": sha, "agent_id": event.get("agent_id")})
     return 0
 

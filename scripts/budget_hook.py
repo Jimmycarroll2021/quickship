@@ -20,7 +20,7 @@ def handle(event):
     tp = event.get("transcript_path")
     with runtime.transaction() as db:
         if tp:
-            if role != "overseer":
+            if role != "overseer" and not event.get("agent_id"):
                 runtime.atomic(s / "transcript_path", tp)
             paths = runtime.get(db, "transcripts", [])
             if tp not in paths:

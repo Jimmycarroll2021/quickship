@@ -16,6 +16,8 @@ import runtime
 import quality
 import preflight
 import policy
+import budget
+import check_criteria
 
 EXITS = {"DONE": 0, "DONE_PARTIAL": 3, "SAFE_STOP": 3, "HALT": 4, "ERROR": 5}
 
@@ -115,8 +117,22 @@ def remaining(config):
     return max(.1, config["deadline"] - time.time())
 
 
+def agents(root):
+    from brief import load_yaml
+    result = {}
+    for path in sorted((root / ".claude/agents").glob("*.md")):
+        _, frontmatter, prompt = path.read_text(encoding="utf-8").split("---", 2)
+        fields = load_yaml(frontmatter)
+        name = fields.pop("name")
+        fields["prompt"] = prompt.strip()
+        for key in ("tools", "disallowedTools"):
+            if isinstance(fields.get(key), str):
+                fields[key] = [t.strip() for t in fields[key].split(",")]
+        result[name] = fields
+    return result
+
+
 def verify_criteria(root, brief, config):
-    import check_criteria
     old = runtime.load(root / "docs/ledgers/criteria.json", {"results": []})
     results = []
     for index, criterion in enumerate(brief["success_criteria"]):
@@ -188,6 +204,15 @@ def finalize(root, config):
     if time.time() >= config["deadline"]:
         return finish(root, "DONE_PARTIAL", "deadline exceeded before final verification")
     b = config["brief"]
+    transcript = budget.normalize_path(budget.read_text(runtime.state() / "transcript_path"))
+    if not transcript or not Path(transcript).is_file():
+        return finish(root, "DONE_PARTIAL", "final budget accounting unavailable")
+    tokens, cache_reads, cost = budget.incremental_usage(transcript)
+    steps = int(budget.read_text(runtime.state() / "steps") or "0")
+    exhausted = [key for key, value in (("tokens", tokens), ("cost_usd", cost), ("steps", steps))
+                 if value >= b["budgets"][key]]
+    if exhausted:
+        return finish(root, "DONE_PARTIAL", "budget exhausted before final verification", {"exhausted": exhausted})
     gate = quality.gate(root, b, config["deadline"])
     criteria = verify_criteria(root, b, config)
     missing = []
@@ -269,12 +294,15 @@ def main():
                         hook["command"] = hook["command"].replace('$CLAUDE_PROJECT_DIR', str(frozen).replace("\\", "/"))
             settings_path = frozen / "settings.json"
             runtime.atomic(settings_path, settings)
+            agents_path = frozen / "agents.json"
+            runtime.atomic(agents_path, agents(root))
             args = ["claude", "-p", "Run the mission in BRIEF.yaml using the v0.3 Lead loop. Nobody is answering questions. "
                     "Do not push, open or merge PRs. Submit docs/RESULT.json and docs/REPORT.md when ready. "
                     "Bind each subagent to its registered step before work. Reserve 25% of the budgets for synthesis.",
                     "--permission-mode", "acceptEdits", "--permission-prompts", "none",
                     "--allowedTools", ",".join(settings["permissions"]["allow"]),
                     "--settings", str(settings_path), "--setting-sources", "",
+                    "--agents", str(agents_path),
                     "--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config", "--output-format", "json",
                     "--max-turns", str(int(b["budgets"]["steps"]))]
             if sid:
@@ -285,7 +313,8 @@ def main():
                     data = json.loads(run([sys.executable, "scripts/budget.py"], root))
                     budget = data["cost_usd"]
                 args += ["--max-budget-usd", str(max(.01, b["budgets"]["cost_usd"] - budget))]
-            env = dict(os.environ, CLAUDE_PROJECT_DIR=str(root), QS_HARNESS_ROOT=str(frozen))
+            env = dict(os.environ, CLAUDE_PROJECT_DIR=str(root), QS_HARNESS_ROOT=str(frozen),
+                       CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS="1")
             ov = None
             if os.environ.get("QS_OVERSEER", "1") == "1":
                 # The loop is supervised alongside the lead; terminate the whole owned tree on exit.
