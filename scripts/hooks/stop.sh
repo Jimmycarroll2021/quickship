@@ -17,6 +17,22 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 [ -n "$ROOT" ] || { echo "stop: cannot resolve project root" >&2; exit 2; }
 S="$ROOT/.claude/state"
 
+# v0.3: the parent controller owns RUN_STATE and final verification.
+if [ -f "$S/controller.json" ]; then
+  "$PY" - "$ROOT" <<'PY3'
+import json, sys
+from pathlib import Path
+r = Path(sys.argv[1]); p = r / "docs/RESULT.json"
+try:
+    d = json.loads(p.read_text(encoding="utf-8"))
+    assert d.get("state") in ("READY", "DONE_PARTIAL", "SAFE_STOP", "HALT")
+except (OSError, ValueError, AssertionError):
+    print("stop: submit docs/RESULT.json and REPORT.md before stopping", file=sys.stderr)
+    sys.exit(2)
+PY3
+  exit $?
+fi
+
 # No active run: nothing to gate on RUN_STATE, just run the quality gate.
 [ -f "$S/brief.json" ] || exec bash "$ROOT/scripts/gate.sh"
 

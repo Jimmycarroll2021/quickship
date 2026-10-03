@@ -61,7 +61,8 @@ expect_contains "untouched file is upgraded" "upgrade: tests/diffbase.sh" "$OUT"
 expect_contains "modified file is kept on upgrade" "skip (modified): scripts/diffbase.sh" "$OUT"
 grep -q "# v9 change" "$t/tests/diffbase.sh" && ok "upgraded file has new content" || bad "tests/diffbase.sh not refreshed"
 grep -q "# local edit" "$t/scripts/diffbase.sh" && ok "modified file survives upgrade" || bad "scripts/diffbase.sh clobbered"
-[ "$(cat "$t/.quickship/VERSION")" = "9.9.9" ] && ok ".quickship/VERSION bumped to 9.9.9" || bad ".quickship/VERSION is $(cat "$t/.quickship/VERSION")"
+[ "$(cat "$t/.quickship/VERSION")" = "$(cat "$ROOT/VERSION")" ] && ok "incomplete upgrade retains installed version" || bad "incomplete upgrade falsely bumped version"
+[ -f "$t/.quickship/conflicts" ] && ok "upgrade records unresolved conflicts" || bad "upgrade lost conflicts"
 
 # --- CLAUDE.md is never overwritten ---
 echo "# my own rules" > "$t/CLAUDE.md"

@@ -56,17 +56,23 @@ existing=(); for f in "${files[@]}"; do [ -f "$T/$f" ] && existing+=("$f"); done
 [ -f "$T/.quickship/manifest.sha256" ] && while read -r s p; do REC[$p]=$s; done < "$T/.quickship/manifest.sha256"
 
 install() { mkdir -p "$(dirname "$T/$1")" && cp "$SRC/$1" "$T/$1"; }
-new_manifest=""
+new_manifest=""; conflicts=""
+mkdir -p "$T/.quickship"
+[ -f "$T/.quickship/unmanaged" ] || touch "$T/.quickship/unmanaged"
 for f in "${files[@]}"; do
   new_manifest="$new_manifest${SSHA[$f]}  $f"$'\n'
   if [ ! -f "$T/$f" ]; then install "$f" && echo "add: $f"; changed=$((changed+1)); continue; fi
   [ "${TSHA[$f]}" = "${SSHA[$f]}" ] && continue
-  untouched=0; [ "$upgrade" = 1 ] && [ "${TSHA[$f]}" = "${REC[$f]:-}" ] && untouched=1
+  untouched=0; [ "$upgrade" = 1 ] && ! grep -qxF "$f" "$T/.quickship/unmanaged" && [ "${TSHA[$f]}" = "${REC[$f]:-}" ] && untouched=1
   if [ "$f" = CLAUDE.md ] && [ "$untouched" = 0 ]; then
     echo "notice: CLAUDE.md exists; merge the \"Hard rules\" and \"Lead loop\" sections from $SRC/CLAUDE.md"; skipped=$((skipped+1))
   elif [ "$force" = 1 ]; then install "$f" && echo "overwrite: $f"; changed=$((changed+1))
   elif [ "$untouched" = 1 ]; then install "$f" && echo "upgrade: $f"; changed=$((changed+1))
   else echo "skip (modified): $f"; skipped=$((skipped+1)); fi
+  if [ "$(sha_all "$T" "$f" | cut -d' ' -f1)" != "${SSHA[$f]}" ]; then
+    conflicts="$conflicts$f"$'\n'
+    grep -qxF "$f" "$T/.quickship/unmanaged" || echo "$f" >> "$T/.quickship/unmanaged"
+  fi
 done
 
 # .gitignore entries the harness relies on
@@ -87,8 +93,15 @@ if [ ! -f "$T/BRIEF.yaml" ] && [ -f "$SRC/BRIEF.example.yaml" ]; then
 fi
 
 mkdir -p "$T/.quickship"
-[ -f "$SRC/VERSION" ] && cp "$SRC/VERSION" "$T/.quickship/VERSION"
-printf '%s' "$new_manifest" > "$T/.quickship/manifest.sha256"
+if [ -z "$conflicts" ]; then
+  [ -f "$SRC/VERSION" ] && cp "$SRC/VERSION" "$T/.quickship/VERSION"
+  rm -f "$T/.quickship/conflicts"
+else
+  printf '%s' "$conflicts" > "$T/.quickship/conflicts"
+  echo "notice: incomplete installation; resolve .quickship/conflicts before running"
+fi
+sha_all "$T" "${files[@]}" > "$T/.quickship/manifest.sha256"
+printf '%s' "$conflicts" > "$T/.quickship/unmanaged"
 
 echo "next: edit BRIEF.yaml, commit it, then: bash scripts/run.sh  (Windows PowerShell: .\run.cmd)"
 echo "  or, from a raw idea: write IDEA.md (see IDEA.example.md), then: bash scripts/idea.sh, then: bash scripts/program.sh"

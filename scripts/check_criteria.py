@@ -8,6 +8,7 @@ a plain run; the reviewer's grade is recorded afterwards with
 `--judge <index> PASS|FAIL --evidence "<quoted command output>"`, which
 rewrites that entry, recounts, and exits 2 if any criterion is then failed.
 """
+import runtime
 import argparse
 import json
 import os
@@ -29,9 +30,9 @@ def find_root():
     if env:
         return Path(env)
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
         )
     except OSError:
@@ -60,8 +61,15 @@ def run_test(criterion, cwd):
             cwd=str(cwd),
             capture_output=True,
             text=True,
-            timeout=TEST_TIMEOUT_S,
+            start_new_session=os.name != "nt",
         )
+        try:
+            proc.communicate(timeout=TEST_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            from runner import terminate
+            terminate(proc)
+            proc.communicate(timeout=10)
+            raise
     except subprocess.TimeoutExpired:
         return "fail", "timeout"
     except OSError as e:
@@ -121,11 +129,7 @@ def write_ledger(root, payload):
     ledger_dir = root / "docs" / "ledgers"
     ledger_dir.mkdir(parents=True, exist_ok=True)
     ledger_path = ledger_dir / "criteria.json"
-    tmp_path = ledger_path.with_name(ledger_path.name + ".tmp")
-    with tmp_path.open("w", encoding="utf-8", newline="\n") as f:
-        json.dump(payload, f, indent=2)
-        f.write("\n")
-    os.replace(tmp_path, ledger_path)
+    runtime.atomic(ledger_path, payload)
 
 
 def recount(results):

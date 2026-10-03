@@ -6,6 +6,7 @@ Stdlib only, Python 3.10+.
 """
 from __future__ import annotations
 
+import runtime
 import argparse
 import hashlib
 import json
@@ -65,10 +66,7 @@ def progress_path() -> Path:
 
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text)
-    os.replace(tmp, path)
+    runtime.atomic(path, text)
 
 
 def load_task() -> dict:
@@ -101,6 +99,9 @@ def read_progress() -> list[dict]:
 
 
 def next_step_id() -> str:
+    if runtime.active():
+        with runtime.transaction() as db:
+            return f"s{runtime.increment(db, 'step-sequence'):03d}"
     return f"s{len(read_progress()) + 1:03d}"
 
 
@@ -265,6 +266,9 @@ def cmd_step_start(a) -> int:
     if "untrusted_content" in legs and "outbound" in legs:
         raise LedgerError("a step may not combine untrusted_content and outbound legs")
     step = {"id": next_step_id(), "slug": a.slug, "legs": legs, "ts": now()}
+    if runtime.active():
+        with runtime.transaction() as db:
+            runtime.put(db, "step:" + step["id"], step)
     write_atomic(state_dir() / "current_step.json", json.dumps(step) + "\n")
     print(step["id"])
     return 0
@@ -285,10 +289,10 @@ def cmd_tier(a) -> int:
     return 0
 
 
-TERMINAL_STATES = ("DONE", "DONE_PARTIAL", "SAFE_STOP", "HALT")
-RUN_ARTIFACTS = ("RUN_STATE", "REPORT.md", "plan.md", "overseer.md")
+TERMINAL_STATES = ("DONE", "DONE_PARTIAL", "SAFE_STOP", "HALT", "ERROR")
+RUN_ARTIFACTS = ("RUN_STATE", "REPORT.md", "plan.md", "overseer.md", "RESULT.json", "COMPLETION.json")
 RUNTIME_STATE = ("session_id", "steps", "restarts", "stop_attempts", "idem.jsonl", "current_step.json", "tier",
-                 "cancel", "force_replan", "transcript_path", "last_run.json")
+                 "cancel", "force_replan", "transcript_path", "last_run.json", "controller.json", "runtime.sqlite3", "runtime.sqlite3-journal")
 
 
 def cmd_archive_stale(a) -> int:
@@ -385,6 +389,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("stall-check").set_defaults(fn=cmd_stall_check)
     s = sub.add_parser("replan"); s.add_argument("--slug", default="-"); s.add_argument("--detail", default="")
     s.set_defaults(fn=cmd_replan)
+    s = sub.add_parser("step-bind"); s.add_argument("id"); s.set_defaults(fn=lambda a: 0)
     s = sub.add_parser("step-start"); s.add_argument("slug"); s.add_argument("--legs", required=True)
     s.set_defaults(fn=cmd_step_start)
     s = sub.add_parser("facts-invalidate"); s.add_argument("substring"); s.set_defaults(fn=cmd_facts_invalidate)
@@ -396,7 +401,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return args.fn(args)
+        with runtime.file_lock():
+            return args.fn(args)
     except LedgerError as exc:
         print(f"ledger.py: {exc}", file=sys.stderr)
         return 2

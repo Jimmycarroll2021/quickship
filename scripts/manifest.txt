@@ -8,6 +8,7 @@ scripts/*.sh
 scripts/manifest.txt
 scripts/hooks/*.sh
 tests/*.sh
+tests/*.py
 CLAUDE.md
 BRIEF.example.yaml
 docs/design/contracts.md

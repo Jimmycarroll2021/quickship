@@ -64,6 +64,8 @@ def _parse_scalar(s):
     s = s.strip()
     if s == "":
         return None
+    if s.startswith("{") and s.endswith("}"):
+        return _parse_flow_map(s)
     if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
         return s[1:-1]
     if s == "true":
@@ -213,7 +215,8 @@ _BUDGET_DEFAULTS = {"stall_limit": 3, "replan_limit": 5, "critic_rounds": 2}
 
 
 def _num(v, key):
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+    import math
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0:
         raise BriefError(key, f"{key} must be a number > 0")
     return v
 
@@ -229,7 +232,7 @@ def validate_structure(raw):
     if not isinstance(goal, str) or not goal.strip():
         raise BriefError("mission.goal")
     deliverables = mission.get("deliverables")
-    if not isinstance(deliverables, list) or not deliverables:
+    if not isinstance(deliverables, list) or not deliverables or any(not isinstance(p, str) or not p.strip() for p in deliverables):
         raise BriefError("mission.deliverables")
     # optional: the branch a chained mission starts from and opens its PR against (set by scripts/program.sh)
     base = mission.get("base")
@@ -297,7 +300,7 @@ def validate_structure(raw):
     if default not in ("skip-and-record", "allow"):
         raise BriefError("permissions.irreversible.default")
     allow = irreversible.get("allow", [])
-    if not isinstance(allow, list):
+    if not isinstance(allow, list) or any(not isinstance(p, str) or not p.strip() for p in allow):
         raise BriefError("permissions.irreversible.allow")
     allow = [str(x) for x in allow]
 
@@ -305,7 +308,20 @@ def validate_structure(raw):
     if ambiguity_policy != "choose-default-and-record":
         raise BriefError("ambiguity_policy")
 
+    quality = raw.get("quality", {})
+    if not isinstance(quality, dict) or quality.get("profile", "code") not in ("code", "docs"):
+        raise BriefError("quality.profile")
+    for key in ("lint", "test", "build"):
+        val = quality.get(key)
+        if val is not None and not (isinstance(val, str) and val.strip() or
+                isinstance(val, dict) and set(val) == {"skip"} and
+                isinstance(val["skip"], str) and val["skip"].strip()):
+            raise BriefError("quality." + key)
+    if not isinstance(raw.get("maintenance", False), bool):
+        raise BriefError("maintenance")
     return {
+        "quality": dict({"profile": "code"}, **quality),
+        "maintenance": raw.get("maintenance", False),
         "mission": dict({"goal": goal, "deliverables": list(deliverables)}, **({"base": base} if base else {})),
         "success_criteria": criteria,
         "budgets": budgets,
@@ -322,7 +338,7 @@ RUNTIME_STATE = ("started_at", "session_id", "steps", "restarts", "stop_attempts
 
 def reset_runtime_state(sdir):
     import shutil
-    for name in RUNTIME_STATE:
+    for name in RUNTIME_STATE + ("controller.json", "runtime.sqlite3", "runtime.sqlite3-journal", "budget-cache.json"):
         path = os.path.join(sdir, name)
         if os.path.isfile(path):
             os.remove(path)

@@ -47,7 +47,7 @@ for m in "${missions[@]}"; do
   pr="$(grep -Eo 'https://github\.com/[^ )"`]+/pull/[0-9]+' docs/REPORT.md 2>/dev/null | head -n 1)"
   printf '%s\t%s\t%s\n' "$m" "${st:-NONE}" "$branch" >> "$LOG"
   printf '| %s | %s | %s | %s |\n' "$(basename "$m")" "${st:-NONE}" "${branch:-?}" "${pr:-none}" >> "$SUMMARY"
-  if [ "$st" != DONE ]; then
+  if [ "$st" != DONE ] || [ "$rc" != 0 ]; then
     echo "program: $m ended ${st:-without a terminal state}; read docs/REPORT.md. Later missions were not started." >&2
     exit 3
   fi

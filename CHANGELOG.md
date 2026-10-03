@@ -2,6 +2,31 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
+## [0.3.0] - 2026-10-03
+
+### Changed
+
+- Publishing and authoritative completion moved to a separate Python supervisor. Exit 0 requires
+  independent gate, criteria, deliverable, final-commit security and GitHub branch/PR verification.
+- Quality checks no longer silently pass when missing. Briefs support explicit commands, skip reasons
+  and a documentation-only profile that rejects application-code changes.
+- Safeguards are documented as cooperative controls, not an OS sandbox. Subscription cost values
+  are API-equivalent estimates. Supported platforms are Ubuntu/Windows Git Bash, Python 3.10+,
+  Claude Code >=2.1.288. Cloud/macOS execution remain unverified.
+- Exit codes: 0 DONE, 2 invalid setup/brief, 3 partial/safe stop, 4 HALT, 5 controller failure.
+
+### Fixed
+
+- PR-merge/protected-ref/deployment-write policy gaps; agents no longer have publishing authority.
+- Full incremental transcript accounting, serialized counters/ledgers and per-agent step bindings.
+- Controller deadlines terminate owned process trees and preserve interruption/resume evidence.
+- Upgrade checksums reflect actual target files; skipped modifications preserve the installed version
+  and block preflight until conflicts are resolved.
+
+### Validation
+
+See docs/RELEASE-EVIDENCE.md for verified results and remaining release gates.
+
 ## [0.2.0] - 2026-10-03
 
 ### Added

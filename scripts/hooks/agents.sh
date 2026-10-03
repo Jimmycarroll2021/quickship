@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -u
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
-exec "$PY" "$(dirname "$0")/../budget_hook.py"
+exec "$PY" "$(dirname "$0")/../agent_hook.py"

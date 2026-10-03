@@ -12,6 +12,7 @@
 set -u
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
 in="$(cat)"
+printf '%s' "$in" | "$PY" "$(dirname "$0")/../policy.py" || exit 2
 parsed="$(printf '%s' "$in" | "$PY" -c '
 import json, sys
 d = json.load(sys.stdin); e = d.get("hook_event_name", "PreToolUse"); t = d["tool_name"]; i = d["tool_input"]
@@ -78,7 +79,7 @@ leg_of() { # untrusted_content | outbound | none, for this tool call
 
 # --- PostToolUse: record the leg for the current step, never deny ---
 if [ "$event" = PostToolUse ]; then
-  if [ -f "$S/current_step.json" ]; then
+  if [ ! -f "$S/controller.json" ] && [ -f "$S/current_step.json" ]; then
     sid="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id","nostep"))' "$S/current_step.json" 2>/dev/null)"; sid="${sid//$'\r'/}"
     leg="$(leg_of)"; mkdir -p "$S/legs"
     [ "$leg" != none ] && [ -n "$sid" ] && echo "$leg" >> "$S/legs/$sid"
@@ -171,7 +172,7 @@ fi
 if [ -f "$S/cancel" ]; then
   case "$tool" in
     Read|Glob|Grep) ;;
-    Write|Edit|MultiEdit) [[ "$arg" =~ docs/(REPORT\.md|RUN_STATE)$ ]] || deny "overseer cancel: only docs/REPORT.md and docs/RUN_STATE may be written";;
+    Write|Edit|MultiEdit) [[ "$arg" =~ docs/(REPORT\.md|RUN_STATE|RESULT\.json)$ ]] || deny "overseer cancel: only docs/REPORT.md and docs/RUN_STATE may be written";;
     *) deny "overseer cancel: the run is stopping";;
   esac
 fi
@@ -191,7 +192,7 @@ if [ "$tier" = plan ]; then
 fi
 
 # --- 4. lethal trifecta: one step never both reads untrusted content and sends data out ---
-if [ -f "$S/current_step.json" ]; then
+if [ ! -f "$S/controller.json" ] && [ -f "$S/current_step.json" ]; then
   stepinfo="$("$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id","nostep")); print(",".join(d.get("legs",[])))' "$S/current_step.json" 2>/dev/null)"
   stepinfo="${stepinfo//$'\r'/}"; sid="${stepinfo%%$'\n'*}"; declared="${stepinfo#*$'\n'}"
   leg="$(leg_of)"
