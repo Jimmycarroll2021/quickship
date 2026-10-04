@@ -5,7 +5,8 @@
 #
 # Clauses, in order:  1 hard rules (always)   1b read-only subagents (agent_type reviewer or security)   1c overseer role
 # (QS_ROLE=overseer; exempt from the rest)   2 overseer cancel flag   3 plan/act tier   4 lethal-trifecta legs.
-# Clauses 2-4 act only when their state file exists (.claude/state/{cancel,tier,current_step.json}), i.e. during a run.
+# Clauses 2-4 act only when their state file exists (.claude/state/{cancel,tier,current_step.json}), i.e. during a run;
+# clause 4 is off in a v0.3 controller run (runtime.active(): controller.json with schema 3), where policy.py governs.
 # PostToolUse never denies; it only records the leg a tool call used (clause 4).
 # Every PreToolUse call leaves one line in .claude/state/hook_log:  allowed  <utc ts>\t<tool>\t<arg>
 #                                                                   denied   <utc ts>\tDENY\t<tool>\t<reason>\t<arg>
@@ -15,17 +16,20 @@ in="$(cat)"
 printf '%s' "$in" | "$PY" "$(dirname "$0")/../policy.py" || exit 2
 parsed="$(printf '%s' "$in" | "$PY" -c '
 import json, sys
+sys.path.insert(0, sys.argv[1]); import runtime
 d = json.load(sys.stdin); e = d.get("hook_event_name", "PreToolUse"); t = d["tool_name"]; i = d["tool_input"]
 a = d.get("agent_type") or "lead"   # subagent type; absent for the lead session
 if t == "Bash": v = i["command"]
 elif t in ("Write", "Edit", "MultiEdit", "Read"): v = i["file_path"]
 elif t.startswith("mcp__"): v = " ".join(f"{k}={i[k]}" for k in ("head", "base", "title", "url") if i.get(k))  # log summary only
 else: v = i.get("url") or i.get("query") or ""
-print(e); print(t); print(str(a)); print(str(v))
-' 2>/dev/null)" || { echo "guard: malformed hook input, denied" >&2; exit 2; }
+c = 1 if runtime.active() else 0   # a controller run: the same schema-3 test policy.py and the runner use
+print(e); print(t); print(c); print(str(a)); print(str(v))
+' "$(dirname "$0")/.." 2>/dev/null)" || { echo "guard: malformed hook input or runtime state, denied" >&2; exit 2; }
 parsed="${parsed//$'\r'/}"   # python on Windows emits CRLF
 event="${parsed%%$'\n'*}"; rest="${parsed#*$'\n'}"
 tool="${rest%%$'\n'*}"; rest="${rest#*$'\n'}"
+controlled="${rest%%$'\n'*}"; rest="${rest#*$'\n'}"
 agent="${rest%%$'\n'*}"; raw="${rest#*$'\n'}"; arg="${raw//$'\n'/ }"   # raw keeps newlines for the split
 case "$tool" in Write|Edit|MultiEdit|Read) arg="${arg//\\//}";; esac   # Windows tools pass backslash paths
 S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
@@ -82,7 +86,7 @@ leg_of() { # untrusted_content | outbound | none, for this tool call
 
 # --- PostToolUse: record the leg for the current step, never deny ---
 if [ "$event" = PostToolUse ]; then
-  if [ ! -f "$S/controller.json" ] && [ -f "$S/current_step.json" ]; then
+  if [ "$controlled" != 1 ] && [ -f "$S/current_step.json" ]; then
     sid="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id","nostep"))' "$S/current_step.json" 2>/dev/null)"; sid="${sid//$'\r'/}"
     leg="$(leg_of)"; mkdir -p "$S/legs"
     [ "$leg" != none ] && [ -n "$sid" ] && echo "$leg" >> "$S/legs/$sid"
@@ -196,7 +200,7 @@ if [ "$tier" = plan ]; then
 fi
 
 # --- 4. lethal trifecta: one step never both reads untrusted content and sends data out ---
-if [ ! -f "$S/controller.json" ] && [ -f "$S/current_step.json" ]; then
+if [ "$controlled" != 1 ] && [ -f "$S/current_step.json" ]; then
   stepinfo="$("$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id","nostep")); print(",".join(d.get("legs",[])))' "$S/current_step.json" 2>/dev/null)"
   stepinfo="${stepinfo//$'\r'/}"; sid="${stepinfo%%$'\n'*}"; declared="${stepinfo#*$'\n'}"
   leg="$(leg_of)"

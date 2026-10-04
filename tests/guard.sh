@@ -236,6 +236,19 @@ if [ ! -s "$S/legs/s032" ]; then ok "mcp: no leg recorded for unrelated tool"; e
 expect_exit "mcp: create_pull_request in a fresh step allowed" 0 hook guard.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$pr_input")"
 expect_contains "mcp: hook_log arg is the head/base/title summary" $'mcp__github__create_pull_request\thead=mission/x base=main title=t' "$(tail -n 1 "$S/hook_log")"
 rm -f "$S/current_step.json"
+# ---- a controller.json that is not schema 3 is not a controller run (runtime.active(), as policy.py and the runner
+# decide): it must not switch off the trifecta legs or the state-file write limits outside a run ----
+printf '{}' > "$S/controller.json"
+printf '{"id":"s040","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "{} controller.json: PostToolUse WebFetch records leg" 0 hook guard.sh "$(web_json PostToolUse)"
+expect_contains "{} controller.json: legs file has untrusted_content" "untrusted_content" "$(cat "$S/legs/s040" 2>/dev/null)"
+printf '{"id":"s041","slug":"x","legs":["untrusted_content"]}' > "$S/current_step.json"
+expect_exit "{} controller.json: push after untrusted content denied" 2 hook guard.sh "$(bash_json "git push origin mission/x")"
+expect_contains "{} controller.json: trifecta reason" "trifecta" "$OUT"
+expect_exit "{} controller.json: overseer may not write .claude/state/tier" 2 ov_hook "$(file_json Write ".claude/state/tier")"
+expect_exit "{} controller.json: researcher may not write .claude/state" 2 hook guard.sh "$(agent_file_json researcher Write ".claude/state/current_step.json")"
+expect_exit "{} controller.json: reviewer may not write .claude/state" 2 hook guard.sh "$(agent_file_json reviewer Write ".claude/state/current_step.json")"
+rm -f "$S/controller.json" "$S/current_step.json"
 # ---- DENY log: a denied call leaves exactly one five-field line  <utc ts>\tDENY\t<tool>\t<reason>\t<arg> ----
 before="$(wc -l < "$S/hook_log")"
 hook guard.sh "$(bash_json "git push origin main")" >/dev/null 2>&1
