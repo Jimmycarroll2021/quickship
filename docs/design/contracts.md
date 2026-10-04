@@ -11,6 +11,14 @@ Judge evidence must match the frozen rubric and the current deliverable hashes; 
 DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
 security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
 Exit codes: 0 verified DONE; 2 invalid preflight/brief; 3 partial/safe stop; 4 HALT; 5 controller failure.
+`docs/COMPLETION.json` carries `retryable` (boolean): true only when a plain rerun can resume the same run, that is
+the lead session crashed or failed (`SAFE_STOP`) or an exception interrupted the controller (`ERROR`).
+
+`bash scripts/run.sh --archive` is the operator's recovery command and makes no model call. With a terminal RUN_STATE
+it runs `ledger.py archive-stale --force` and prints `archived docs/runs/<at>-<goal-slug>` (exit 0). With no run at all
+it prints `run: nothing to archive` (exit 0). With an unfinished run it refuses with exit 2
+(`run: the current run is not terminal and its session may still resume; cancel it first ...`). A failed archive
+prints `run: archive failed: <error>` (exit 2); any other argument prints the usage line (exit 2).
 
 `quality` is optional: `profile: code|docs` (default code), and `lint`, `test`, `build`, each either
 a shell command string or `{skip: "human supplied reason"}`. Node defaults are the package-manager scripts;
@@ -152,7 +160,7 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 
 `docs/RUN_STATE` is exactly one line: `{"state": "DONE|DONE_PARTIAL|SAFE_STOP|HALT", "reason": "...", "at": "..."}`.
 
-A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/ledgers/` into the next mission's checkout. `ledger.py archive-stale` (run by `run.sh` after the brief validates, and by the lead at step 1) prints `current` when there is no terminal RUN_STATE or its ledgers carry the brief's goal; otherwise it moves those files to `docs/runs/<at>-<goal-slug>/`, deletes the runtime state (`session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`), rewrites `started_at`, and prints `archived <dir>`.
+A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/ledgers/` into the next mission's checkout. `ledger.py archive-stale` (run by `run.sh` after the brief validates, and by the lead at step 1) prints `current` when there is no terminal RUN_STATE, or its ledgers carry the brief's goal, or `controller.json`'s frozen brief carries it (a lead that crashed before `ledger.py init` leaves no task.json); otherwise it moves those files to `docs/runs/<at>-<goal-slug>/`, deletes the runtime state (`session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`), rewrites `started_at`, and prints `archived <dir>`. `--force` archives a terminal run whatever its goal; `run.sh --archive` uses it.
 
 `scripts/hooks/stop.sh` (Stop hook): the overseer and strategist roles exit 0. Under the v0.3 controller (`controller.json` present) it blocks the stop until `docs/RESULT.json` exists with `state` READY, DONE_PARTIAL, SAFE_STOP or HALT; the controller then verifies and decides. Without a controller and without `brief.json` it runs the gate. The v0.2 path below (RUN_STATE reminders, SAFE_STOP on the third attempt) applies only to runs with `brief.json` and no controller.
 
@@ -195,7 +203,7 @@ Every denial appends `<utc ts>	DENY	<tool>	<reason>	<arg>` (five tab-separated f
 
 ## Mission chains
 
-`scripts/program.sh [missions-dir]` (default `docs/missions`) runs `NN-*.yaml` in order. It checks every brief first (exit 2 on any failure, nothing runs). For each mission not already `DONE` in `.claude/state/program.tsv` (`file<TAB>state<TAB>branch`): check out the previous mission's branch detached (the current HEAD for the first), write `BRIEF.yaml` from the mission file with `mission.base` set to that branch (none for the first), commit it on the detached HEAD, and call `scripts/run.sh` (`QS_RUN` overrides) up to six times until `docs/RUN_STATE` is terminal. It appends a row to `docs/PROGRAM.md` (mission, state, branch, PR URL from `docs/REPORT.md`). A state other than `DONE` stops the chain with exit 3. Re-running skips `DONE` missions. `main` never receives a commit.
+`scripts/program.sh [missions-dir]` (default `docs/missions`) runs `NN-*.yaml` in order. It checks every brief first (exit 2 on any failure, nothing runs). For each mission not already `DONE` in `.claude/state/program.tsv` (`file<TAB>state<TAB>branch`): check out the previous mission's branch detached (the current HEAD for the first), write `BRIEF.yaml` from the mission file with `mission.base` set to that branch (none for the first), commit it on the detached HEAD, and call `scripts/run.sh` (`QS_RUN` overrides) up to six times. A RUN_STATE counts for this mission only when this mission's runs wrote it: it is newer than `.claude/state/program-mark` (touched before each invocation) or differs from the copy taken before the invocation and the copy in `.claude/state/program-baseline` (taken when the mission began), so a predecessor's `DONE` left behind by a run.sh that failed early is never read as this mission's. It re-invokes run.sh while no fresh terminal state exists or `docs/COMPLETION.json` says `"retryable": true`; the runner's own five-launch limit still applies. Exit 2 from run.sh (brief rejected) stops at once. `DONE` counts only with run.sh exit 0; anything else is recorded as the state, or `FAILED rc=<n>` when no fresh state exists. It appends a row to `docs/PROGRAM.md` (mission, state, branch, PR URL from `docs/REPORT.md`). A state other than `DONE` stops the chain with exit 3. Re-running skips `DONE` missions. `main` never receives a commit.
 
 `scripts/diffbase.sh` prefers the brief's `mission.base` (`origin/<base>`, else `<base>`) over `origin/main`, so the reviewer and `security` see only the current mission's diff.
 

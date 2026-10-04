@@ -34,14 +34,14 @@ Two places. Runtime state is gitignored and local to the checkout. Mission state
 | `cancel`, `force_replan` | the overseer or you | Flag files. Existence is the signal. |
 | `hook_log` | `hooks/guard.sh` | One line per tool call, plus `DENY` lines with the reason. |
 | `overseer-process.log` | the controller | Output of the overseer loop. |
-| `program.tsv`, `program-current` | `program.sh` | Which chained missions finished, in what state, on which branch, and which one is in progress. |
+| `program.tsv`, `program-current`, `program-mark`, `program-baseline` | `program.sh` | Which chained missions finished, in what state, on which branch, and which one is in progress; the marker and copy it uses to tell this mission's RUN_STATE from a predecessor's. |
 
 ### `docs/` (committed)
 
 | File | What it is |
 |---|---|
 | `RESULT.json` | What the lead submitted when it stopped: `READY`, `DONE_PARTIAL`, `SAFE_STOP` or `HALT`, with a reason. A claim, not the outcome. |
-| `COMPLETION.json` | The controller's verdict and evidence: gate, criteria, security verdict for the final commit, publication record. |
+| `COMPLETION.json` | The controller's verdict and evidence: gate, criteria, security verdict for the final commit, publication record, and `retryable` (whether a plain rerun can resume the run). |
 | `RUN_STATE` | One line of JSON with the verified state. Written only by the controller. |
 | `REPORT.md` | The report. The controller's verified-outcome heading sits on top of the lead's details. |
 | `ledgers/task.json`, `ledgers/progress.jsonl`, `ledgers/criteria.json` | Task ledger, append-only event log, and the last criteria result. |
@@ -88,7 +88,7 @@ bash scripts/run.sh
 
 The controller keeps the session, the ledgers, the launch counter and the original deadline. Ctrl+C records `SAFE_STOP` and keeps all of them too. Five launches are allowed in total, with exponential backoff between them (`QS_SLEEP` overrides). A verified `DONE` is never published again, and `HALT` needs your review. If the saved session is gone, the controller reports it rather than starting a duplicate mission.
 
-A crash inside a mission chain is retried in place by `program.sh`, within the same five-launch limit.
+Inside a mission chain, `program.sh` reruns a mission in place when its lead crashed or the controller was interrupted (`"retryable": true` in `COMPLETION.json`), within the same five-launch limit. A mission that ends in any other state, or exits non-zero without a fresh state (`FAILED rc=<n>` in `docs/PROGRAM.md`), stops the chain with exit 3.
 
 ## Cancel by hand
 
@@ -96,7 +96,7 @@ A crash inside a mission chain is retried in place by `program.sh`, within the s
 touch .claude/state/cancel
 ```
 
-The controller ends the lead and the overseer, and the run finishes in `SAFE_STOP` with its report. The overseer creates the same flag on its own when the replan limit is hit, nothing has progressed for 45 minutes, or the same denied command repeats five times. Archive the run before you start again, because the archive also clears the flag.
+The controller ends the lead and the overseer, and the run finishes in `SAFE_STOP` with its report. The overseer creates the same flag on its own when the replan limit is hit, nothing has progressed for 45 minutes, or the same denied command repeats five times. If no controller is running when you create the flag, run `bash scripts/run.sh` once so it can record `SAFE_STOP`. That briefly starts the lead and counts as one of the five launches. Archive the run before you start again, because the archive also clears the flag.
 
 ## Force a replan
 
@@ -118,7 +118,7 @@ Any other change to the brief of an unfinished run is refused, because the contr
 bash scripts/run.sh --archive
 ```
 
-This works for a finished run in any state: `DONE`, `DONE_PARTIAL`, `SAFE_STOP`, `HALT` or `ERROR`. It moves the run's documents and ledgers to `docs/runs/<at>-<slug>/`, clears the runtime state including the session and any flags, and prints `archived <dir>`. It makes no model call. If the run isn't finished, it refuses with exit 2. Cancel the run first, run it once to let it stop, then archive.
+This works for a finished run in any state: `DONE`, `DONE_PARTIAL`, `SAFE_STOP`, `HALT` or `ERROR`. It moves the run's documents and ledgers to `docs/runs/<at>-<slug>/`, clears the runtime state including the session and any flags, and prints `archived <dir>`. It makes no model call. With no run at all it prints `run: nothing to archive` and exits 0. If the run isn't finished, it refuses with exit 2 and says so. Cancel the run first, run it once to let it stop, then archive.
 
 After a verified `DONE`, a brief with a new goal starts fresh on its own. The finished run is archived automatically.
 
@@ -163,7 +163,7 @@ The suite runs every `tests/*.sh` in parallel (`QS_TEST_JOBS` sets the width) an
 | Symptom | Meaning | What to do |
 |---|---|---|
 | Exit 2 before any model work | Preflight or the brief failed; the output names the problem. | Fix it and rerun. With the built-in YAML reader, check quoting, 2-space indent, and that no `cmd` contains a colon. |
-| `run: active brief differs` | You changed more than the budgets of an unfinished run. | Change only the budgets, or run `bash scripts/run.sh --archive` first. |
+| `run: BRIEF.yaml differs from the active run's brief beyond budgets` | You changed more than the budgets of an unfinished run. | Change only the budgets, or run `bash scripts/run.sh --archive` first. |
 | `DONE_PARTIAL` although the agent said it was done | The controller's own check failed. | `docs/COMPLETION.json` names what failed: a criterion, the gate, the security verdict, a dirty tree, or a deadline during publishing. |
 | `budget exhausted (<names>)` denials | A budget hit its limit; only the result and report could still be written. | Read "Gaps", raise the limit as described above and rerun, or take the partial work. |
 | `SAFE_STOP` with `restart limit (5) reached` | The lead failed five launches in a row. | Look at `last_run.json` and `hook_log` for the repeated failure. Fix the cause, archive the run, and start again. |

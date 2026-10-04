@@ -22,6 +22,21 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 - Controller deadlines terminate owned process trees and preserve interruption/resume evidence.
 - Upgrade checksums reflect actual target files; skipped modifications preserve the installed version
   and block preflight until conflicts are resolved.
+- Review fixes before release:
+  - A lead that crashed before writing its ledgers no longer loses the run: `archive-stale` also
+    recognises the goal frozen in `controller.json`, so the next launch resumes instead of archiving.
+  - `program.sh` no longer reads a predecessor's `DONE` as the current mission's when `run.sh` fails
+    early. `DONE` also requires exit 0; otherwise the chain records `FAILED rc=<n>` and stops.
+  - `program.sh` retries only outcomes the controller marks `retryable` in `COMPLETION.json`
+    (a crashed lead or an interrupted controller).
+  - `bash scripts/run.sh --archive` archives a finished run so a changed brief can start fresh; it
+    refuses an unfinished one. A change to the `budgets` block alone continues the same run.
+  - Child output is read as UTF-8 with replacement, so undecodable stderr can't block the lead.
+  - Hooks fail closed: the budget hook denies on any error, the gate exits only 0 or 2, and the
+    SubagentStop evidence hook never blocks the same subagent twice.
+  - An unquoted newline is a command separator for the guard in every mode.
+  - The researcher has no shell again.
+  - `docs/RELEASE-EVIDENCE.md` no longer contains local paths, private repository names or session ids.
 
 ### Validation
 
@@ -69,6 +84,7 @@ First public release: a Claude Code harness that takes one Mission Brief and shi
 
 Seven unattended missions ran with this release, including a real application and a kill-and-resume run. The figures, recomputed in 0.1.1 from the full transcripts, are in the README under "Track record".
 
+[0.3.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.0

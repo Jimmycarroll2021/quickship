@@ -323,7 +323,7 @@ Other stacks need explicit `quality` entries. For documentation missions, set `p
 
 **How do I stop a run?** Create the cancel flag with `touch .claude/state/cancel`. The run ends in `SAFE_STOP` and still writes its report. Archive the run before you start again.
 
-**How do I change the brief or start a new mission?** Changing the brief of a run that has started is refused. Raising a budget is the exception: if only the `budgets` block changes, the same run continues with the new limits. For anything else, run `bash scripts/run.sh --archive`. That moves the finished run into `docs/runs/`. Then edit and commit `BRIEF.yaml` and run again. After a verified `DONE`, a brief with a new goal starts fresh automatically.
+**How do I change the brief or start a new mission?** Changing the brief of a run that has started is refused. Raising a budget is the exception: if only the `budgets` block changes, the same run continues with the new limits. For anything else, run `bash scripts/run.sh --archive`. That moves the finished run into `docs/runs/`; an unfinished run is refused until you cancel it (see the [runbook](docs/RUNBOOK.md#cancel-by-hand)). Then edit and commit `BRIEF.yaml` and run again. After a verified `DONE`, a brief with a new goal starts fresh automatically.
 
 **Can it run in the cloud?** Earlier versions ran in a `claude --cloud` session. v0.3's controller isn't release-verified there yet.
 
