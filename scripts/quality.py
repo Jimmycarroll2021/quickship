@@ -94,7 +94,7 @@ def gate(root, brief=None, deadline=None):
     evidence = {"head": git(root, "rev-parse", "HEAD"), "checks": [], "failures": []}
     def run(label, command, selftest=False):
         print("gate: " + label + " -> " + command, file=sys.stderr, flush=True)
-        timeout = deadline - time.time() if deadline is not None else (3600 if selftest else 900)
+        timeout = deadline - time.time() if deadline is not None else (5400 if selftest else 900)
         # Shell code comes only from the operator's brief/project, not constructed strings.
         try:
             if timeout <= 0:

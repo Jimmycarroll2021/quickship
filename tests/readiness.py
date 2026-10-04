@@ -69,7 +69,7 @@ class ReadinessTests(unittest.TestCase):
     def test_standalone_harness_timeout_allows_serial_installed_suite(self):
         proc, _, _, evidence = self.gate_with_process('harness')
         self.assertTrue(evidence['pass'])
-        self.assertEqual(proc.communicate.call_args.kwargs['timeout'], 3600)
+        self.assertEqual(proc.communicate.call_args.kwargs['timeout'], 5400)
 
     def test_project_timeout_remains_900_seconds(self):
         proc, _, _, _ = self.gate_with_process('node')

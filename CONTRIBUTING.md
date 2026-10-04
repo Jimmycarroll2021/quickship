@@ -24,7 +24,7 @@ bash scripts/gate.sh       # compile check, full self-tests including installati
 The full gate is the acceptance entry point; there is no need to run the full suite twice.
 Windows self-tests default to one job, and installed-copy tests inherit that limit.
 Use `QS_TEST_JOBS=2` for bounded parallelism, or `QS_TEST_JOBS=1` for a serial run.
-Standalone harness self-tests have a 60-minute timeout. Set `QS_TEST_LOG_DIR` to a private,
+Standalone harness self-tests have a 90-minute timeout. Set `QS_TEST_LOG_DIR` to a private,
 untracked directory to retain per-script output and exit codes; see the runbook for details.
 
 - **Test first.** Every hook and script has a test file in `tests/` using the helpers in `tests/lib.sh`. Add a failing case, watch it fail, then fix the code.

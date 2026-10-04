@@ -164,7 +164,7 @@ For a reproducible local run with retained evidence:
 QS_TEST_JOBS=1 QS_TEST_LOG_DIR=/absolute/private/log-directory bash scripts/gate.sh
 ```
 
-Each suite creates a separate directory containing `jobs`, `<script>.out` and `<script>.rc`. Normal runs still clean up temporary logs. Retained logs may contain private project data and belong outside tracked files. A standalone harness self-test command has a 60-minute limit to accommodate serial installed-copy coverage; ordinary project checks retain their 15-minute default. A controller run always uses its existing mission deadline instead.
+Each suite creates a separate directory containing `jobs`, `<script>.out` and `<script>.rc`. Normal runs still clean up temporary logs. Retained logs may contain private project data and belong outside tracked files. A standalone harness self-test command has a 90-minute limit to accommodate serial installed-copy coverage; ordinary project checks retain their 15-minute default. A controller run always uses its existing mission deadline instead.
 
 ## Common failures
 
