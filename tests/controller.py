@@ -1,4 +1,6 @@
 """Launcher/preflight/publishing compatibility cases with simulated providers."""
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -91,6 +93,78 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn('--resume',calls[0])
         self.assertNotIn('old-session',calls[0])
         self.assertEqual(len(list((self.root/'docs/runs').iterdir())),1)
+
+    def archive(self):
+        """`runner.main(['--archive'])` with the real ledger; no model may be launched."""
+        out,err=io.StringIO(),io.StringIO()
+        with patch.object(preflight,'inspect',return_value=self.check), patch.object(runner,'launch') as launch, \
+                redirect_stdout(out), redirect_stderr(err):
+            code=runner.main(['--archive'])
+        launch.assert_not_called()
+        return code,out.getvalue(),err.getvalue()
+
+    def test_archive_terminal_run_then_new_goal_starts_fresh(self):
+        self.setup_launcher()
+        runtime.atomic(runtime.state()/'session_id','session-1\n')
+        runner.finish(self.root,'DONE_PARTIAL','budget exhausted before final verification')
+        code,out,_=self.archive()
+        self.assertEqual(code,0)
+        self.assertIn('archived docs/runs/',out)
+        for gone in (runtime.state()/'controller.json',runtime.state()/'session_id',self.root/'docs/RUN_STATE'):
+            self.assertFalse(gone.exists(),gone)
+        new=dict(self.b,mission={'goal':'next goal','deliverables':['README.md']})
+        self.check['brief']=new
+        runtime.atomic(runtime.state()/'brief.json',new)
+        code,calls=self.invoke(real_ledger=True)
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertNotIn('--resume',calls[0])
+        self.assertEqual(runtime.load(runtime.state()/'controller.json')['brief']['mission']['goal'],'next goal')
+
+    def test_archive_refused_while_run_not_terminal(self):
+        self.setup_launcher()
+        runtime.atomic(runtime.state()/'session_id','session-1\n')
+        code,_,err=self.archive()
+        self.assertEqual(code,2)
+        self.assertIn('touch .claude/state/cancel',err)
+        self.assertTrue((runtime.state()/'controller.json').exists())
+        self.assertTrue((runtime.state()/'session_id').exists())
+
+    def test_run_sh_passes_archive_flag(self):
+        self.setup_launcher()
+        env=dict(os.environ,QS_PYTHON=sys.executable)
+        refused=subprocess.run([quality.bash(),'scripts/run.sh','--archive'],cwd=self.root,env=env,capture_output=True,text=True,timeout=60)
+        self.assertEqual(refused.returncode,2,refused.stderr)
+        runner.finish(self.root,'SAFE_STOP','cancelled')
+        archived=subprocess.run([quality.bash(),'scripts/run.sh','--archive'],cwd=self.root,env=env,capture_output=True,text=True,timeout=60)
+        self.assertEqual(archived.returncode,0,archived.stderr)
+        self.assertIn('archived docs/runs/',archived.stdout)
+
+    def test_budget_only_change_resumes_with_new_deadline(self):
+        (self.root/'BRIEF.yaml').write_text('budgets: {wall_clock_min: 60}\n')
+        self.setup_launcher()
+        runtime.atomic(runtime.state()/'session_id','session-1\n')
+        runner.finish(self.root,'DONE_PARTIAL','wall-clock deadline exceeded')
+        (self.root/'BRIEF.yaml').write_text('budgets: {wall_clock_min: 120}\n')
+        self.check['brief']=dict(self.b,budgets=dict(self.b['budgets'],wall_clock_min=120))
+        code,calls=self.invoke()
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertEqual(calls[0][calls[0].index('--resume')+1],'session-1')
+        config=runtime.load(runtime.state()/'controller.json')
+        started=runner.dt.datetime.fromisoformat((runtime.state()/'started_at').read_text().strip()).timestamp()
+        self.assertAlmostEqual(config['deadline'],started+120*60,places=3)
+        self.assertEqual(config['brief']['budgets']['wall_clock_min'],120)
+        self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['state'],'DONE_PARTIAL')
+        self.assertEqual(config['hashes'],runner.hashes(self.root))
+
+    def test_goal_change_without_archive_refused_with_hint(self):
+        self.setup_launcher()
+        runner.finish(self.root,'DONE_PARTIAL','budget exhausted before final verification')
+        self.check['brief']=dict(self.b,mission={'goal':'other goal','deliverables':['README.md']})
+        err=io.StringIO()
+        with redirect_stderr(err):
+            code,calls=self.invoke()
+        self.assertEqual((code,len(calls)),(2,0))
+        self.assertIn('bash scripts/run.sh --archive',err.getvalue())
 
     def test_fresh_start_passes_flags_and_saves_session(self):
         code,calls=self.call_main()

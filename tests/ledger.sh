@@ -202,4 +202,16 @@ expect_exit "archive-stale: different-goal controller run exits 0" 0 led archive
 expect_contains "archive-stale: different-goal controller run is archived" "archived" "$OUT"
 if [ ! -e "$S/controller.json" ] && [ ! -e "$S/runtime.sqlite3" ] && [ ! -e "$S/session_id" ] && [ ! -e "$D/RUN_STATE" ]; then ok "archive-stale: different-goal controller state reset"; else bad "archive-stale: different-goal controller state reset"; fi
 expect_contains "archive-stale: different-goal run dir named by the old goal" "goal-g" "$(ls -d "$D"/runs/*/ | head -1)"
+
+# --- archive-stale --force (behind `run.sh --archive`): the operator archives a terminal run of the same goal ---
+rm -rf "$D/runs"
+printf '{"mission":{"goal":"Goal G"}}' > "$S/brief.json"
+printf '{"schema":3,"brief":{"mission":{"goal":"Goal G"}},"deadline":1}' > "$S/controller.json"
+printf 'sess-g' > "$S/session_id"
+printf '{"state":"DONE_PARTIAL","reason":"budget","at":"2026-10-02T00:00:00Z"}\n' > "$D/RUN_STATE"
+expect_exit "archive-stale --force: same goal exits 0" 0 led archive-stale --force
+expect_contains "archive-stale --force: same goal is archived" "archived docs/runs/" "$OUT"
+if [ ! -e "$S/controller.json" ] && [ ! -e "$S/session_id" ] && [ ! -e "$D/RUN_STATE" ]; then ok "archive-stale --force: run state reset"; else bad "archive-stale --force: run state reset"; fi
+expect_exit "archive-stale --force: nothing terminal exits 0" 0 led archive-stale --force
+expect_contains "archive-stale --force: nothing terminal says current" "current" "$OUT"
 finish
