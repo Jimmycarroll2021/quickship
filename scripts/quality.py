@@ -158,8 +158,10 @@ def main():
         root = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True).stdout.strip())
         evidence = gate(root)
         return 0 if evidence["pass"] else 2
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
-        print("gate: FAIL " + str(exc), file=sys.stderr)
+    except Exception as exc:
+        # gate.sh and the Stop hook exec this; any exit other than 2 would let a stop
+        # through without a gate verdict, so every failure is a gate FAIL.
+        print("gate: FAIL " + type(exc).__name__ + ": " + str(exc), file=sys.stderr)
         return 2
 
 
