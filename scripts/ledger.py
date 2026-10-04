@@ -321,12 +321,19 @@ def cmd_archive_stale(a) -> int:
             old_goal = json.loads(task_path().read_text(encoding="utf-8")).get("goal")
         except json.JSONDecodeError:
             old_goal = None
-    # Same goal with its ledgers = the run that just finished; leave it. A different goal, or a terminal state
-    # with no ledgers at all (a run that ended before planning), cannot be resumed and is archived.
-    if old_goal is not None and old_goal == goal:
+    run_goal = None
+    try:
+        run_goal = json.loads((state_dir() / "controller.json").read_text(encoding="utf-8"))["brief"]["mission"]["goal"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        run_goal = None
+    # Same goal with its ledgers = the run that just finished; leave it. The controller's frozen brief also
+    # identifies the current run when the lead failed before `ledger.py init`: archiving that would reset its
+    # deadline, launch counter and budget on every rerun. A different goal, or a terminal state with neither
+    # ledgers nor controller state (a legacy run that ended before planning), cannot be resumed and is archived.
+    if goal is not None and goal in (old_goal, run_goal):
         print("current")
         return 0
-    slug = re.sub(r"[^a-z0-9]+", "-", (old_goal or "run").lower()).strip("-")[:24].rstrip("-") or "run"
+    slug = re.sub(r"[^a-z0-9]+", "-", (old_goal or run_goal or "run").lower()).strip("-")[:24].rstrip("-") or "run"
     at = re.sub(r"[^0-9A-Za-z]+", "-", str(state.get("at") or now())).strip("-")
     dest = docs / "runs" / f"{at}-{slug}"
     n = 1

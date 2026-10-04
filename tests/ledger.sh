@@ -181,4 +181,25 @@ if [ ! -e "$S/session_id" ] && [ ! -e "$S/steps" ] && [ ! -e "$S/restarts" ]; th
 if [ -s "$S/started_at" ]; then ok "archive-stale: started_at rewritten"; else bad "archive-stale: started_at rewritten"; fi
 expect_exit "archive-stale: second call is a no-op" 0 led archive-stale
 expect_contains "archive-stale: second call says current" "current" "$OUT"
+
+# --- archive-stale: a lead that fails before `ledger.py init` leaves a terminal RUN_STATE and no ledgers. While the
+# controller's frozen brief carries the same goal it is still the current run: archiving it would reset the deadline,
+# the launch counter and the budget on every rerun, so the 5-launch limit could never trip ---
+rm -rf "$D/runs" "$L"
+printf '{"mission":{"goal":"Goal G"}}' > "$S/brief.json"
+printf '{"schema":3,"brief":{"mission":{"goal":"Goal G"}},"deadline":1}' > "$S/controller.json"
+"$QS_PYTHON" -c "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); db.execute('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.execute(\"INSERT OR REPLACE INTO kv VALUES ('launches','4')\"); db.commit(); db.close()" "$S/runtime.sqlite3"
+launches() { local o; o="$("$QS_PYTHON" -c "import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute(\"SELECT value FROM kv WHERE key='launches'\").fetchone()[0])" "$S/runtime.sqlite3" 2>&1)"; printf '%s' "${o//$'\r'/}"; }
+printf 'sess-g' > "$S/session_id"; printf '2026-10-01T00:00:00Z\n' > "$S/started_at"
+printf '{"state":"SAFE_STOP","reason":"Claude session failed","at":"2026-10-01T00:05:00Z"}\n' > "$D/RUN_STATE"
+expect_exit "archive-stale: same-goal controller run without ledgers exits 0" 0 led archive-stale
+expect_contains "archive-stale: same-goal controller run without ledgers says current" "current" "$OUT"
+if [ -f "$D/RUN_STATE" ] && [ -f "$S/controller.json" ] && [ -f "$S/session_id" ] && [ ! -e "$D/runs" ]; then ok "archive-stale: same-goal controller run left in place"; else bad "archive-stale: same-goal controller run left in place"; fi
+expect_contains "archive-stale: launch counter survives" "4" "$(launches)"
+expect_contains "archive-stale: started_at survives" "2026-10-01T00:00:00Z" "$(cat "$S/started_at")"
+printf '{"mission":{"goal":"Goal H"}}' > "$S/brief.json"
+expect_exit "archive-stale: different-goal controller run exits 0" 0 led archive-stale
+expect_contains "archive-stale: different-goal controller run is archived" "archived" "$OUT"
+if [ ! -e "$S/controller.json" ] && [ ! -e "$S/runtime.sqlite3" ] && [ ! -e "$S/session_id" ] && [ ! -e "$D/RUN_STATE" ]; then ok "archive-stale: different-goal controller state reset"; else bad "archive-stale: different-goal controller state reset"; fi
+expect_contains "archive-stale: different-goal run dir named by the old goal" "goal-g" "$(ls -d "$D"/runs/*/ | head -1)"
 finish

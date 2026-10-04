@@ -31,14 +31,19 @@ class ControllerTests(unittest.TestCase):
 
     def call_main(self, lead_rc=0, payload=None, reason=None, finalize_rc=0):
         self.setup_launcher()
+        return self.invoke(lead_rc, payload, reason, finalize_rc)
+
+    def invoke(self, lead_rc=0, payload=None, reason=None, finalize_rc=0, real_ledger=False):
+        """One runner.main() against the current state; real_ledger runs the real `ledger.py archive-stale`."""
         calls=[]
         def launch(args, root, output, deadline, env):
             calls.append(args)
             runtime.atomic(output, payload if payload is not None else {'session_id':'session-123','is_error':False})
             return lead_rc, reason
         original = runner.run
+        stubbed = ('scripts/brief.py',) if real_ledger else ('scripts/brief.py','scripts/ledger.py')
         def commands(args, root, **kwargs):
-            if len(args)>1 and args[1] in ('scripts/brief.py','scripts/ledger.py'):
+            if len(args)>1 and args[1] in stubbed:
                 return 'current'
             return original(args,root,**kwargs)
         with patch.object(preflight,'inspect',return_value=self.check), patch.object(runner,'launch',side_effect=launch), \
@@ -46,6 +51,46 @@ class ControllerTests(unittest.TestCase):
                 patch.dict(os.environ,{'QS_OVERSEER':'0','QS_SLEEP':'0'}):
             code=runner.main()
         return code,calls
+
+    def test_early_lead_crashes_keep_controller_state_until_restart_limit(self):
+        # The lead dies before `ledger.py init` every time: no ledgers ever exist. The terminal RUN_STATE each
+        # failure leaves must not let archive-stale reset the deadline or the launch counter.
+        self.setup_launcher()
+        deadline=runtime.load(runtime.state()/'controller.json')['deadline']
+        launched=0
+        for attempt in range(1,7):
+            code,calls=self.invoke(lead_rc=1,payload={},real_ledger=True)
+            launched+=len(calls)
+            self.assertEqual(code,3)
+            self.assertEqual(runtime.load(runtime.state()/'controller.json')['deadline'],deadline)
+        self.assertEqual(launched,5)
+        self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['reason'],'restart limit (5) reached')
+        self.assertFalse((self.root/'docs/runs').exists())
+
+    def stale_run(self, ledgers):
+        """An earlier mission (different goal) that ended terminal, left in this checkout."""
+        self.setup_launcher()
+        earlier=dict(self.b,mission={'goal':'An earlier mission','deliverables':['README.md']})
+        runtime.atomic(runtime.state()/'controller.json',dict(self.config,brief=earlier))
+        runner.finish(self.root,'DONE','old')
+        runtime.atomic(runtime.state()/'session_id','old-session\n')
+        if ledgers:
+            runtime.atomic(self.root/'docs/ledgers/task.json',{'goal':'An earlier mission','plan':[]})
+
+    def test_lone_terminal_state_from_other_goal_is_archived_and_run_starts(self):
+        self.stale_run(ledgers=False)
+        code,calls=self.invoke(real_ledger=True)
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertEqual(len(list((self.root/'docs/runs').iterdir())),1)
+        self.assertEqual(runtime.load(runtime.state()/'controller.json')['brief']['mission']['goal'],'test')
+
+    def test_stale_other_goal_run_is_archived_and_not_resumed(self):
+        self.stale_run(ledgers=True)
+        code,calls=self.invoke(real_ledger=True)
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertNotIn('--resume',calls[0])
+        self.assertNotIn('old-session',calls[0])
+        self.assertEqual(len(list((self.root/'docs/runs').iterdir())),1)
 
     def test_fresh_start_passes_flags_and_saves_session(self):
         code,calls=self.call_main()
