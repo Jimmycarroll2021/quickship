@@ -68,6 +68,16 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(command=cmd):
                 self.deny(self.event(cmd))
 
+    def test_combined_short_force_flag_outside_controller(self):
+        (runtime.state() / 'controller.json').unlink()
+        self.b['permissions']['irreversible']['default'] = 'allow'
+        runtime.atomic(runtime.state() / 'brief.json', self.b)
+        policy.check(self.event('git push -u origin mission/test'))
+        for cmd in ('git push -uf origin mission/test', 'git push -fu origin mission/test', 'git -C . push -qf origin mission/test'):
+            with self.subTest(command=cmd):
+                with self.assertRaisesRegex(policy.Denied, 'force push'):
+                    policy.check(self.event(cmd))
+
     def test_agent_cannot_publish(self):
         self.b['permissions']['irreversible']['default'] = 'allow'
         for cmd in ('git push origin mission/test', 'gh pr create --title test', 'npm publish'):
@@ -160,6 +170,19 @@ class ReleaseTests(unittest.TestCase):
         for cmd in ('bash -c "git push origin main"', 'python -c "print(1)"', 'echo $(pwd)', 'echo `pwd`', 'cat <<EOF', 'ls &'):
             self.deny(self.event(cmd))
 
+    def test_newline_rejected_in_controller(self):
+        for cmd in ('ls\nrm -f src/app.py', 'git status\ngit push origin mission/test', 'echo "a\nb"'):
+            with self.subTest(command=cmd):
+                self.deny(self.event(cmd))
+
+    def test_newline_separates_commands_outside_controller(self):
+        self.assertEqual(policy.argv_segments('ls\nrm -f src/app.py'), [['ls'], ['rm', '-f', 'src/app.py']])
+        self.assertEqual(policy.argv_segments('git status &&\ngit diff\n\nls\n'), [['git', 'status'], ['git', 'diff'], ['ls']])
+        self.assertEqual(policy.argv_segments("grep 'a\nb' f"), [['grep', 'a\nb', 'f']])
+        self.assertEqual(policy.argv_segments('ls \\\n-l'), [['ls', '-l']])
+        with self.assertRaises(policy.Denied):
+            policy.argv_segments('ls\n&& rm x')
+
     def test_powershell_and_connectors(self):
         self.deny(self.event(tool='PowerShell', path='x'))
         self.deny({'tool_name': 'mcp__github__create_pull_request', 'tool_input': {}})
@@ -214,6 +237,31 @@ class ReleaseTests(unittest.TestCase):
         policy.check(self.event(tool='Write', path='work/_untrusted/research.md', agent='researcher'))
         self.deny(self.event(tool='Write', path='src/file.py', agent='researcher'))
         self.deny(self.event('ls', agent='researcher'))
+
+    def research_write(self, path, content, aid='research-1'):
+        e = self.event(tool='Write', path=path, agent='researcher', aid=aid)
+        e['tool_input']['content'] = content
+        return e
+
+    def test_researcher_binds_without_shell(self):
+        with runtime.transaction() as db:
+            runtime.put(db, 'step:s005', {'id': 's005', 'slug': 'research', 'legs': ['untrusted_content']})
+            runtime.put(db, 'step:s006', {'id': 's006', 'slug': 'other', 'legs': ['untrusted_content']})
+        self.deny(self.research_write('work/_untrusted/research.md', 'findings before binding'))
+        self.deny(self.research_write('work/_untrusted/research.md', 'step-bind s006'))
+        self.deny(self.research_write('work/_untrusted/research.md', 'step-bind s999'))
+        self.deny(self.event('python scripts/ledger.py step-bind s005', agent='researcher', aid='research-1'))
+        policy.check(self.research_write('work/_untrusted/research.md', 'step-bind s005'))
+        self.assertEqual(policy.bound_step(self.event('ls', agent='researcher', aid='research-1'))['id'], 's005')
+        policy.check(self.research_write('work/_untrusted/research.md', '# Findings'))
+        self.deny(self.research_write('work/_untrusted/other.md', '# Findings'))
+        self.deny(self.research_write('work/_untrusted/other.md', 'step-bind s006'))
+
+    def test_researcher_has_no_shell_outside_controller(self):
+        (runtime.state() / 'controller.json').unlink()
+        for cmd in ('ls', 'python scripts/ledger.py step-bind s001', 'cat work/_untrusted/x.md'):
+            with self.subTest(command=cmd):
+                self.deny(self.event(cmd, agent='researcher'))
 
     def test_read_only_roles(self):
         self.register()
@@ -288,6 +336,14 @@ class ReleaseTests(unittest.TestCase):
 
     def test_missing_accounting_denies_mutation(self):
         self.assertEqual(budget_hook.handle(self.event('git status')), 2)
+
+    def test_budget_hook_lock_timeout_fails_closed(self):
+        import io, sqlite3
+        for name in ('PreToolUse', 'PostToolUse'):
+            e = self.event('git status'); e['hook_event_name'] = name
+            with patch.object(runtime, 'transaction', side_effect=sqlite3.OperationalError('database is locked')), \
+                    patch.object(sys, 'stdin', io.StringIO(json.dumps(e))):
+                self.assertEqual(budget_hook.main(), 2)
 
     def test_final_report_escape_not_allowed(self):
         self.b['budgets']['steps'] = 1
@@ -403,6 +459,37 @@ class ReleaseTests(unittest.TestCase):
         agent_hook.handle({'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
                            'last_assistant_message':'Findings: none.\n\nJUDGE 1: PASS\n\nEvidence:\n- README.md: hello'})
         self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],2)
+
+    def agents_hook(self, event):
+        hook = Path(__file__).resolve().parents[1] / 'scripts/hooks/agents.sh'
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(self.root), QS_PYTHON=sys.executable)
+        return subprocess.run([quality.bash(), str(hook)], input=json.dumps(event), text=True,
+                              capture_output=True, env=env, timeout=60).returncode
+
+    def test_fail_grade_for_missing_deliverable_is_recorded(self):
+        self.b['mission']['deliverables'] = ['docs/missing.md']
+        self.b['success_criteria'] = [{'kind':'judge','rubric':'docs/missing.md explains setup'}]
+        runtime.atomic(runtime.state()/'controller.json', self.config)
+        self.register(aid='reviewer-1')
+        e = {'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
+             'last_assistant_message':'judge 0: FAIL: docs/missing.md does not exist'}
+        self.assertEqual(agent_hook.handle(e), 0)
+        with runtime.transaction() as db:
+            self.assertEqual(runtime.get(db, 'judge:0')['verdict'], 'FAIL')
+        self.assertEqual(self.agents_hook(e), 0)
+
+    def test_agent_hook_never_traps_a_subagent_twice(self):
+        self.b['mission']['deliverables'] = ['docs/missing.md']
+        self.b['success_criteria'] = [{'kind':'judge','rubric':'docs/missing.md explains setup'}]
+        runtime.atomic(runtime.state()/'controller.json', self.config)
+        self.register(aid='reviewer-1')
+        for message in ('judge 0: PASS: looks fine', 5):
+            with self.subTest(message=message):
+                e = {'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
+                     'last_assistant_message':message}
+                self.assertEqual(self.agents_hook(e), 2)
+                e['stop_hook_active'] = True
+                self.assertEqual(self.agents_hook(e), 0)
 
     def test_deliverable_path_escape(self):
         self.b['mission']['deliverables'] = ['../missing.md']

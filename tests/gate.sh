@@ -27,6 +27,18 @@ rm "$clean/untracked.txt"; printf 'see %s%s\n' sk-ant- api03-abcdefghijklmnopqrs
 expect_exit "sk-ant key in untracked file: exit 2" 2 bash -c "cd '$clean' && bash scripts/gate.sh"
 rm "$clean/notes.md"; echo "the task-list uses sk-slugs-like-this-one-here-ok" > "$clean/prose.md"
 expect_exit "prose with sk- prefix is not a secret" 0 bash -c "cd '$clean' && bash scripts/gate.sh"
+rm "$clean/prose.md"
+# fail closed: the Stop hook execs the gate, and Claude Code lets a stop through on any exit other than 2, so a crash on
+# a malformed brief (non-dict quality, non-string command) must be a gate FAIL with exit 2, never exit 1
+mkdir -p "$clean/.claude/state"
+printf '{"quality":"lint"}' > "$clean/.claude/state/brief.json"
+expect_exit "non-dict quality in brief: exit 2" 2 bash -c "cd '$clean' && bash scripts/gate.sh"
+expect_contains "non-dict quality in brief: gate FAIL" "gate: FAIL" "$OUT"
+printf '{"quality":{"lint":7,"test":"true","build":{"skip":"none"}}}' > "$clean/.claude/state/brief.json"
+expect_exit "non-string command in brief: exit 2" 2 bash -c "cd '$clean' && bash scripts/gate.sh"
+expect_contains "non-string command in brief: gate FAIL" "gate: FAIL" "$OUT"
+rm -f "$clean/.claude/state/brief.json"
+expect_exit "missing interpreter: exit 2" 2 bash -c "cd '$clean' && QS_PYTHON=/nonexistent/python bash scripts/gate.sh"
 # --- harness self-tests run in the quickship repo itself, not in an installed copy (.quickship/VERSION present):
 # they take minutes, test the harness rather than the project, and two of them in parallel (lead + worker) time out
 # a 30-minute mission. QS_SELFTEST=1 forces them. The stub leaves a marker file because the gate swallows the
