@@ -179,4 +179,22 @@ out="$(hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool
 out="${out//$'\r'/}"
 expect_contains "cache fixture: BUDGET line shows tokens=35/30" 'BUDGET tokens=35/30' "$out"
 rm -f "$S/transcript_path"
+# --- fail closed: Claude Code treats any exit other than 0/2 as a non-blocking error, so a crash must become exit 2 ---
+write_brief 1000000 100 1000 1000; echo 0 > "$S/steps"
+expect_exit "non-dict tool_input fails closed" 2 hook budget.sh '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":"ls"}'
+expect_contains "non-dict tool_input reason" "budget:" "$OUT"
+mv "$S/runtime.sqlite3" "$S/runtime.sqlite3.bak" 2>/dev/null; mkdir "$S/runtime.sqlite3"   # unopenable runtime db
+expect_exit "unopenable runtime state: PreToolUse denied" 2 hook budget.sh "$(pre_bash "npm test")"
+expect_contains "unopenable runtime state: reason given" "budget:" "$OUT"
+expect_exit "unopenable runtime state: PostToolUse failure is reported" 2 hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}'
+expect_contains "unopenable runtime state: PostToolUse reason given" "budget:" "$OUT"
+rmdir "$S/runtime.sqlite3"; mv "$S/runtime.sqlite3.bak" "$S/runtime.sqlite3" 2>/dev/null
+# outside a controller run an unreadable budget state denies mutations (as on main), but never reads
+printf 'not json' > "$S/brief.json"
+expect_exit "unreadable budget state: Bash denied" 2 hook budget.sh "$(pre_bash "npm test")"
+expect_contains "unreadable budget state: reason" "cannot read budget state, denied" "$OUT"
+expect_exit "unreadable budget state: Write src denied" 2 hook budget.sh "$(pre_file Write "src/a.ts")"
+expect_exit "unreadable budget state: Read allowed" 0 hook budget.sh "$(pre_file Read "src/a.ts")"
+write_brief 1000000 100 1000 1000
+expect_exit "missing interpreter fails closed" 2 env QS_PYTHON=/nonexistent/python bash "$ROOT/scripts/hooks/budget.sh" <<< "$(pre_bash "npm test")"
 finish

@@ -302,6 +302,14 @@ class ReleaseTests(unittest.TestCase):
     def test_missing_accounting_denies_mutation(self):
         self.assertEqual(budget_hook.handle(self.event('git status')), 2)
 
+    def test_budget_hook_lock_timeout_fails_closed(self):
+        import io, sqlite3
+        for name in ('PreToolUse', 'PostToolUse'):
+            e = self.event('git status'); e['hook_event_name'] = name
+            with patch.object(runtime, 'transaction', side_effect=sqlite3.OperationalError('database is locked')), \
+                    patch.object(sys, 'stdin', io.StringIO(json.dumps(e))):
+                self.assertEqual(budget_hook.main(), 2)
+
     def test_final_report_escape_not_allowed(self):
         self.b['budgets']['steps'] = 1
         runtime.atomic(runtime.state() / 'controller.json', self.config)

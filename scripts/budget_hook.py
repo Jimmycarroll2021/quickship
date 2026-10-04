@@ -52,8 +52,10 @@ def handle(event):
         args += ["--transcript", tp]
     p = subprocess.run(args, capture_output=True, text=True)
     if p.returncode:
-        if active and not reads and not final:
-            print("budget: cannot read accounting state, denied", file=sys.stderr)
+        # Unknown spend is not "within budget": deny mutations in every mode (main's
+        # budget.sh did the same), while reads and the final report stay possible.
+        if (active or e == "PreToolUse") and not reads and not final:
+            print("budget: cannot read budget state, denied", file=sys.stderr)
             return 2
         return 0
     b = json.loads(p.stdout)
@@ -74,9 +76,17 @@ def handle(event):
     return 0
 
 
-if __name__ == "__main__":
+def main():
+    # Claude Code treats any exit code other than 0 and 2 as a non-blocking error and
+    # lets the call proceed, so every failure (a 15 s sqlite lock timeout, malformed
+    # input of an unexpected type) must surface as exit 2: PreToolUse denies, and a
+    # PostToolUse failure to record the step is shown rather than silently dropped.
     try:
-        sys.exit(handle(json.load(sys.stdin)))
-    except (KeyError, ValueError, TypeError, OSError) as exc:
-        print("budget: malformed input/state: " + str(exc), file=sys.stderr)
-        sys.exit(2)
+        return handle(json.load(sys.stdin))
+    except Exception as exc:
+        print("budget: malformed input/state, denied: " + type(exc).__name__ + ": " + str(exc), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
