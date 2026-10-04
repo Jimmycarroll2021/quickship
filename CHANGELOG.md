@@ -2,6 +2,19 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
+## [0.3.1] - Unreleased
+
+### Fixed
+
+- Operator cancellation is rechecked during final verification and before publication commands. It records non-retryable SAFE_STOP and preserves receipts for completed publication side effects.
+- Documentation-only quality checks require a resolvable mission base or `origin/HEAD`; a missing base no longer turns an empty working-tree diff into a pass.
+- Installed-copy tests inherit the outer job limit. Windows defaults to one job, other platforms to at most four; invalid overrides fail before dispatch.
+- Standalone harness self-tests have a 60-minute limit for serial installed-copy coverage. Ordinary project checks retain 15 minutes, and mission deadlines remain authoritative.
+
+### Added
+
+- `QS_TEST_LOG_DIR` retains separate per-suite output, exit codes and job counts for local acceptance evidence.
+
 ## [0.3.0] - 2026-10-03
 
 ### Changed

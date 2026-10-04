@@ -138,7 +138,7 @@ Read "Gaps" first on a `DONE_PARTIAL`. `docs/decisions.md` has a one-line reason
 
 ## Quality checks and skips
 
-A required check that's missing fails the gate. Configure `quality.lint`, `quality.test` and `quality.build` in the brief, as a command or as `{skip: "reason"}`. The docs profile has to be selected explicitly, and it rejects application-code changes. A Python build counts as not applicable only when no build system is declared. Project test and dependency commands are trusted code that runs with your access.
+A required check that's missing fails the gate. Configure `quality.lint`, `quality.test` and `quality.build` in the brief, as a command or as `{skip: "reason"}`. The docs profile has to be selected explicitly, and it rejects application-code changes. It compares against `mission.base`, or the repository default recorded in `origin/HEAD`; an unresolved base fails the profile. A Python build counts as not applicable only when no build system is declared. Project test and dependency commands are trusted code that runs with your access.
 
 ## Upgrade the harness in a project
 
@@ -156,7 +156,15 @@ A file is refreshed only if it still matches the checksum recorded at install ti
 bash tests/run.sh
 ```
 
-The suite runs every `tests/*.sh` in parallel (`QS_TEST_JOBS` sets the width) and exits 0 only when all pass. No test calls a model or GitHub. In an installed project the gate skips these self-tests, because they test the harness rather than your code. Run them once after `init.sh` or `--upgrade`, or set `QS_SELFTEST=1`. CI runs them on Ubuntu and Windows with Python 3.10 and 3.12.
+The suite runs every `tests/*.sh` and exits 0 only when all pass. `QS_TEST_JOBS` accepts integers from 1 to 1024; the default is one job on Windows and at most four elsewhere. The installer test inherits that limit when testing the installed copy, and prevents recursive installation tests. No test calls a model or GitHub. In an installed project the gate skips these self-tests, because they test the harness rather than your code. Run them once after `init.sh` or `--upgrade`, or set `QS_SELFTEST=1`. CI runs them on Ubuntu and Windows with Python 3.10 and 3.12.
+
+For a reproducible local run with retained evidence:
+
+```bash
+QS_TEST_JOBS=1 QS_TEST_LOG_DIR=/absolute/private/log-directory bash scripts/gate.sh
+```
+
+Each suite creates a separate directory containing `jobs`, `<script>.out` and `<script>.rc`. Normal runs still clean up temporary logs. Retained logs may contain private project data and belong outside tracked files. A standalone harness self-test command has a 60-minute limit to accommodate serial installed-copy coverage; ordinary project checks retain their 15-minute default. A controller run always uses its existing mission deadline instead.
 
 ## Common failures
 

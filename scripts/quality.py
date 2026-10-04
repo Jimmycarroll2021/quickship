@@ -61,11 +61,16 @@ def defaults(root):
 
 
 def docs_only(root, brief):
-    base = brief.get("mission", {}).get("base") or "main"
+    base = brief.get("mission", {}).get("base")
+    if not base:
+        try:
+            base = git(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+        except subprocess.CalledProcessError:
+            return False
     try:
         changed = set(git(root, "diff", "--name-only", base + "...HEAD").splitlines())
     except subprocess.CalledProcessError:
-        changed = set(git(root, "diff", "--name-only", "HEAD").splitlines())
+        return False
     changed.update(git(root, "diff", "--name-only", "HEAD").splitlines())
     changed.update(git(root, "ls-files", "--others", "--exclude-standard").splitlines())
     for name in changed:
@@ -87,13 +92,16 @@ def gate(root, brief=None, deadline=None):
     root = Path(root).resolve()
     brief = brief if brief is not None else brief_for(root)
     evidence = {"head": git(root, "rev-parse", "HEAD"), "checks": [], "failures": []}
-    def run(label, command):
+    def run(label, command, selftest=False):
         print("gate: " + label + " -> " + command, file=sys.stderr, flush=True)
-        timeout = max(0.1, deadline - time.time()) if deadline else 900
+        timeout = deadline - time.time() if deadline is not None else (3600 if selftest else 900)
         # Shell code comes only from the operator's brief/project, not constructed strings.
         try:
+            if timeout <= 0:
+                raise subprocess.TimeoutExpired(command, timeout)
             p = subprocess.Popen([bash(), "-c", command], cwd=root, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, text=True, start_new_session=os.name != "nt")
+                                 stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                                 start_new_session=os.name != "nt")
             try:
                 stdout, stderr = p.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -138,12 +146,12 @@ def gate(root, brief=None, deadline=None):
             evidence["checks"].append({"name": label, "skipped": command["skip"]})
             print("gate: " + label + " skipped: " + command["skip"], file=sys.stderr)
         elif command:
-            run(label, command)
+            run(label, command, selftest=stack == "harness" and label == "test")
         else:
             evidence["failures"].append("missing required " + label + " check; configure quality." + label)
     if (root / "tests/run.sh").exists() and stack != "harness":
         if not (root / ".quickship/VERSION").exists() or os.environ.get("QS_SELFTEST") == "1":
-            run("harness self-tests", "bash tests/run.sh")
+            run("harness self-tests", "bash tests/run.sh", selftest=True)
         else:
             print("gate: harness self-tests skipped in an installed copy (QS_SELFTEST=1 runs them)", file=sys.stderr)
     evidence["pass"] = not evidence["failures"]

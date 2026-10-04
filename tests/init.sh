@@ -34,7 +34,7 @@ expect_contains "run.cmd installed" "bash.exe" "$(cat "$t/run.cmd")"
 
 # --- the installed copy's own suite passes (about a minute; skipped when nested) ---
 if [ -z "${QS_INIT_NESTED:-}" ]; then
-  expect_exit "installed suite passes in the target" 0 env -u QS_TEST_JOBS QS_INIT_NESTED=1 bash -c "cd '$t' && bash tests/run.sh"
+  expect_exit "installed suite passes in the target" 0 env QS_INIT_NESTED=1 bash -c "cd '$t' && bash tests/run.sh"
 fi
 
 # --- idempotent second run ---

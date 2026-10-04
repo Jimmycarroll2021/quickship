@@ -379,11 +379,103 @@ quality:
         with patch.object(runner,'run',return_value='main'),self.assertRaises(ValueError):
             runner.publish(self.root,self.config,'main','abc')
 
+    def test_cancellation_during_final_verification_prevents_publication(self):
+        (self.root/'.git/info/exclude').write_text('.claude/state/\ndocs/REPORT.md\n')
+        tp=runtime.state()/'usage.jsonl';tp.write_text('{}\n')
+        runtime.atomic(runtime.state()/'transcript_path',str(tp))
+        runtime.atomic(self.root/'docs/RESULT.json',{'state':'READY'})
+        head=quality.git(self.root,'rev-parse','HEAD')
+        with runtime.transaction() as db:
+            runtime.put(db,'security',{'verdict':'PASS','head':head})
+        for stage in ('before', 'gate', 'criteria', 'publication', 'publication-stop'):
+            with self.subTest(stage=stage):
+                (runtime.state()/'cancel').unlink(missing_ok=True)
+                def gate(*args):
+                    if stage=='gate': runtime.atomic(runtime.state()/'cancel','stop')
+                    return {'pass':True}
+                def criteria(*args):
+                    if stage=='criteria': runtime.atomic(runtime.state()/'cancel','stop')
+                    return {'failed':0,'deferred':0}
+                def publication(*args):
+                    if stage=='publication-stop': raise runner.Cancelled('cancelled')
+                    runtime.atomic(runtime.state()/'cancel','stop')
+                    return {'url':'https://example.invalid/pr'}
+                if stage=='before': runtime.atomic(runtime.state()/'cancel','stop')
+                with patch.object(quality,'gate',side_effect=gate), \
+                        patch.object(runner,'verify_criteria',side_effect=criteria), \
+                        patch.object(runner,'publish',side_effect=publication) as pub:
+                    self.assertEqual(runner.finalize(self.root,self.config),3)
+                    if stage not in ('publication', 'publication-stop'): pub.assert_not_called()
+                result=runtime.load(self.root/'docs/COMPLETION.json')
+                self.assertEqual(result['state'],'SAFE_STOP')
+                self.assertFalse(result['retryable'])
+
+    def test_publication_rechecks_cancellation_before_push_and_pr_create(self):
+        self.b['permissions']['irreversible']['default']='allow'
+        self.b['mission']['base']='main'
+        for stop_after in ('start', 'remote', 'pr-list'):
+            with self.subTest(stop_after=stop_after):
+                (runtime.state()/'cancel').unlink(missing_ok=True)
+                calls=[]
+                if stop_after=='start': runtime.atomic(runtime.state()/'cancel','stop')
+                def provider(args,root,**kw):
+                    calls.append(args)
+                    if args[:2]==['git','ls-remote']:
+                        if stop_after=='remote': runtime.atomic(runtime.state()/'cancel','stop')
+                        return '' if stop_after=='remote' else 'abc\trefs/heads/mission/test'
+                    if args[:3]==['gh','pr','list']:
+                        runtime.atomic(runtime.state()/'cancel','stop')
+                        return '[]'
+                    self.fail('unexpected mutation: '+repr(args))
+                with patch.object(runner,'run',side_effect=provider), self.assertRaisesRegex(runner.Cancelled,'cancelled'):
+                    runner.publish(self.root,self.config,'mission/test','abc')
+                self.assertEqual(len(calls),{'start':0,'remote':1,'pr-list':2}[stop_after])
+
     def test_expired_publication_makes_no_provider_call(self):
         self.config['deadline']=time.time()-1
         with patch.object(runner,'run') as provider, self.assertRaisesRegex(ValueError,'deadline'):
             runner.publish(self.root,self.config,'mission/test','abc')
         provider.assert_not_called()
+
+    def test_cancellation_after_publication_mutation_preserves_receipt(self):
+        self.b['permissions']['irreversible']['default']='allow'
+        self.b['mission']['base']='main'
+        for stage in ('push', 'pr-create'):
+            with self.subTest(stage=stage):
+                (runtime.state()/'cancel').unlink(missing_ok=True)
+                with runtime.transaction() as db:
+                    runtime.put(db,'publication',{})
+                calls=[]
+                def provider(args,root,**kw):
+                    calls.append(args)
+                    if args[:2]==['git','ls-remote']:
+                        return '' if stage=='push' else 'abc\trefs/heads/mission/test'
+                    if args[:2]==['git','push']:
+                        runtime.atomic(runtime.state()/'cancel','stop')
+                        return ''
+                    if args[:3]==['gh','pr','list']: return '[]'
+                    if args[:3]==['gh','pr','create']:
+                        runtime.atomic(runtime.state()/'cancel','stop')
+                        return 'https://github.com/example/test/pull/1'
+                    self.fail('unexpected publication call: '+repr(args))
+                with patch.object(runner,'run',side_effect=provider), self.assertRaises(runner.Cancelled):
+                    runner.publish(self.root,self.config,'mission/test','abc')
+                with runtime.transaction() as db:
+                    receipt=runtime.get(db,'publication')
+                self.assertEqual(receipt['head'],'abc')
+                self.assertEqual(receipt['status'],'pushed' if stage=='push' else 'pr-created')
+                if stage=='pr-create': self.assertEqual(receipt['url'],'https://github.com/example/test/pull/1')
+                self.assertEqual(len(calls),2 if stage=='push' else 3)
+
+    def test_cancelled_resume_reports_previous_publication_receipt(self):
+        receipt={'status':'pushed','branch':'mission/test','base':'main','head':'saved-commit'}
+        with runtime.transaction() as db:
+            runtime.put(db,'publication',receipt)
+        self.assertEqual(runner.finish(self.root,'SAFE_STOP','cancelled'),3)
+        completion=runtime.load(self.root/'docs/COMPLETION.json')
+        self.assertEqual(completion['publication'],receipt)
+        self.assertFalse(completion['retryable'])
+        self.assertIn('saved-commit',(self.root/'docs/REPORT.md').read_text())
 
     def test_publication_rechecks_deadline_between_calls(self):
         self.b['permissions']['irreversible']['default']='allow'

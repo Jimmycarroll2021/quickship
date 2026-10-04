@@ -24,6 +24,15 @@ EXITS = {"DONE": 0, "DONE_PARTIAL": 3, "SAFE_STOP": 3, "HALT": 4, "ERROR": 5}
 USAGE = "usage: bash scripts/run.sh [--archive]"
 
 
+class Cancelled(Exception):
+    """An operator stop request, rather than a retryable controller error."""
+
+
+def check_cancellation():
+    if (runtime.state() / "cancel").exists():
+        raise Cancelled("cancelled")
+
+
 def now():
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -55,6 +64,12 @@ def hashes(root):
 
 def finish(root, state, reason, details=None, retryable=False):
     # retryable: a plain rerun can resume this run (the lead crashed or an exception interrupted the controller).
+    details = dict(details or {})
+    if state == "SAFE_STOP" and reason == "cancelled":
+        with runtime.transaction() as db:
+            receipt = runtime.get(db, "publication", {})
+        if receipt:
+            details.setdefault("publication", receipt)
     result = {"schema": 3, "state": state, "reason": reason, "at": now(), "retryable": retryable, **(details or {})}
     runtime.atomic(root / "docs/RUN_STATE", {k: result[k] for k in ("state", "reason", "at")})
     runtime.atomic(root / "docs/COMPLETION.json", result)
@@ -192,7 +207,9 @@ def verify_criteria(root, brief, config):
 
 
 def publish(root, config, branch, head):
+    check_cancellation()
     def command(args, root, timeout=30):
+        check_cancellation()
         if time.time() >= config["deadline"]:
             raise ValueError("wall-clock deadline exceeded during publication")
         return run(args, root, timeout=min(timeout, remaining(config)))
@@ -217,6 +234,9 @@ def publish(root, config, branch, head):
     remote = command(["git", "ls-remote", "origin", "refs/heads/" + branch], root)
     if not remote or remote.split()[0] != head:
         command(["git", "push", "origin", branch], root, timeout=remaining(config))
+    record.update({"status": "pushed", "head": head})
+    with runtime.transaction() as db:
+        runtime.put(db, "publication", record)
     prs = json.loads(command(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
                          "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) > 1:
@@ -225,8 +245,13 @@ def publish(root, config, branch, head):
         body = runtime.state() / "pr-body.md"
         runtime.atomic(body, "Mission: " + brief["mission"]["goal"] +
                        "\n\nThe controller independently verified the final gate, success criteria, deliverables and security review.\n")
-        command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
-             "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
+        created = command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
+                          "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
+        record["status"] = "pr-created"
+        if re.fullmatch(r"https://github\.com/[^/]+/[^/]+/pull/[0-9]+", created):
+            record["url"] = created
+        with runtime.transaction() as db:
+            runtime.put(db, "publication", record)
         prs = json.loads(command(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
                              "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) != 1 or prs[0]["headRefOid"] != head or prs[0]["headRefName"] != branch or prs[0]["baseRefName"] != base:
@@ -241,6 +266,8 @@ def publish(root, config, branch, head):
 
 
 def finalize(root, config):
+    if (runtime.state() / "cancel").exists():
+        return finish(root, "SAFE_STOP", "cancelled")
     if hashes(root) != config["hashes"]:
         return finish(root, "HALT", "active harness or brief changed")
     candidate = runtime.load(root / "docs/RESULT.json")
@@ -261,7 +288,11 @@ def finalize(root, config):
     if exhausted:
         return finish(root, "DONE_PARTIAL", "budget exhausted before final verification", {"exhausted": exhausted})
     gate = quality.gate(root, b, config["deadline"])
+    if (runtime.state() / "cancel").exists():
+        return finish(root, "SAFE_STOP", "cancelled", {"gate": gate})
     criteria = verify_criteria(root, b, config)
+    if (runtime.state() / "cancel").exists():
+        return finish(root, "SAFE_STOP", "cancelled", {"gate": gate, "criteria": criteria})
     missing = []
     for name in b["mission"]["deliverables"]:
         path = policy.resolve_path(name, root)
@@ -286,6 +317,11 @@ def finalize(root, config):
     branch = run(["git", "branch", "--show-current"], root)
     try:
         details["publication"] = publish(root, config, branch, head)
+        check_cancellation()
+    except Cancelled as exc:
+        with runtime.transaction() as db:
+            details["publication"] = runtime.get(db, "publication", {})
+        return finish(root, "SAFE_STOP", str(exc), details)
     except policy.Denied as exc:
         return finish(root, "DONE_PARTIAL", str(exc), details)
     if time.time() >= config["deadline"]:

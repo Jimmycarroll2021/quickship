@@ -344,7 +344,8 @@ More in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 | `QS_OVERSEER_MIN` | Overseer interval in minutes (default 15). |
 | `QS_SLEEP` | Seconds to wait before a restart, overriding exponential backoff. |
 | `QS_SELFTEST` | `1` makes the gate run the harness self-tests in an installed project. |
-| `QS_TEST_JOBS` | Parallel self-test files (default: CPU count). |
+| `QS_TEST_JOBS` | Parallel self-test files, integer 1–1024 (default: 1 on Windows; at most 4 elsewhere). Installed-copy tests inherit it. |
+| `QS_TEST_LOG_DIR` | Optional local directory for retained per-script logs and exit codes; each suite gets its own subdirectory. Logs can contain private project information. |
 | `QS_NO_YAML` | `1` forces the built-in YAML reader even when PyYAML is installed. |
 </details>
 
