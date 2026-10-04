@@ -21,6 +21,7 @@ import check_criteria
 import agent_hook
 
 EXITS = {"DONE": 0, "DONE_PARTIAL": 3, "SAFE_STOP": 3, "HALT": 4, "ERROR": 5}
+USAGE = "usage: bash scripts/run.sh [--archive]"
 
 
 def now():
@@ -28,7 +29,8 @@ def now():
 
 
 def run(args, root, timeout=30, check=True):
-    p = subprocess.run(args, cwd=root, capture_output=True, text=True, timeout=max(.1, timeout))
+    p = subprocess.run(args, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=max(.1, timeout))
     if check and p.returncode:
         raise ValueError("command failed: " + shlex.join(args[:3]) + ": " + p.stderr[-1000:])
     return p.stdout.strip()
@@ -51,8 +53,9 @@ def hashes(root):
     return result
 
 
-def finish(root, state, reason, details=None):
-    result = {"schema": 3, "state": state, "reason": reason, "at": now(), **(details or {})}
+def finish(root, state, reason, details=None, retryable=False):
+    # retryable: a plain rerun can resume this run (the lead crashed or an exception interrupted the controller).
+    result = {"schema": 3, "state": state, "reason": reason, "at": now(), "retryable": retryable, **(details or {})}
     runtime.atomic(root / "docs/RUN_STATE", {k: result[k] for k in ("state", "reason", "at")})
     runtime.atomic(root / "docs/COMPLETION.json", result)
     report = root / "docs/REPORT.md"
@@ -100,9 +103,10 @@ def launch(args, root, output, deadline, env, cancellation=True):
     if args[0] == "claude" and os.name == "nt":
         args = [quality.bash(), "-c", "exec " + shlex.join(args)]
     with open(output, "w", encoding="utf-8", newline="\n") as f:
-        p = subprocess.Popen(args, cwd=root, stdout=f, stderr=subprocess.PIPE, text=True,
-                             env=env, start_new_session=os.name != "nt")
-        # stderr must be drained: otherwise a chatty child can deadlock on the pipe.
+        # Decode as UTF-8 with replacement: a strict locale codec (cp1252 on Windows) raising in the drain thread
+        # would stop draining, and stderr must be drained: otherwise a chatty child can deadlock on the pipe.
+        p = subprocess.Popen(args, cwd=root, stdout=f, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                             errors="replace", env=env, start_new_session=os.name != "nt")
         import threading
         errors = []
         thread = threading.Thread(target=lambda: errors.extend(p.stderr), daemon=True)
@@ -127,6 +131,27 @@ def launch(args, root, output, deadline, env, cancellation=True):
         if errors:
             runtime.atomic(runtime.state() / "last_stderr.txt", "".join(errors))
         return p.returncode, reason
+
+
+def started_at():
+    return dt.datetime.fromisoformat((runtime.state() / "started_at").read_text().strip().replace("Z", "+00:00")).timestamp()
+
+
+def archive(root):
+    """Operator recovery (`run.sh --archive`): move a terminal run under docs/runs/ so a changed brief starts fresh."""
+    try:
+        state = (runtime.load(root / "docs/RUN_STATE") or {}).get("state")
+    except (ValueError, AttributeError):
+        state = None
+    if state not in EXITS:
+        if state is None and not (runtime.state() / "controller.json").exists():
+            print("run: nothing to archive", flush=True)
+            return 0
+        print("run: the current run is not terminal and its session may still resume; cancel it first "
+              "(touch .claude/state/cancel, then run bash scripts/run.sh once) or wait for it to finish", file=sys.stderr)
+        return 2
+    print(run([sys.executable, "scripts/ledger.py", "archive-stale", "--force"], root), flush=True)
+    return 0
 
 
 def remaining(config):
@@ -268,8 +293,17 @@ def finalize(root, config):
     return finish(root, "DONE", "criteria, gate, security, branch and PR independently verified", details)
 
 
-def main():
+def main(argv=()):
     root = runtime.root()
+    if list(argv) == ["--archive"]:
+        try:
+            return archive(root)
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            print("run: archive failed: " + str(exc), file=sys.stderr)
+            return 2
+    if argv:
+        print(USAGE, file=sys.stderr)
+        return 2
     try:
         check = preflight.inspect(root)
         if check["errors"]:
@@ -282,15 +316,23 @@ def main():
         b = check["brief"]
         if config and config["brief"] != b:
             completed = runtime.load(root / "docs/COMPLETION.json", {})
-            if completed.get("state") != "DONE" or config["brief"]["mission"]["goal"] == b["mission"]["goal"]:
-                print("run: active brief differs; preserve/archive run before changing it", file=sys.stderr)
+            unbudgeted = [{k: v for k, v in x.items() if k != "budgets"} for x in (config["brief"], b)]
+            if unbudgeted[0] == unbudgeted[1]:
+                # Budget-only edit: continue the same run and session under the new limits and brief hash.
+                config.update(brief=b, deadline=started_at() + b["budgets"]["wall_clock_min"] * 60)
+                current = hashes(root)
+                config["hashes"].pop("BRIEF.yaml", None)
+                config["hashes"].update({k: v for k, v in current.items() if k == "BRIEF.yaml"})
+                runtime.atomic(runtime.state() / "controller.json", config)
+            elif completed.get("state") != "DONE" or config["brief"]["mission"]["goal"] == b["mission"]["goal"]:
+                print("run: BRIEF.yaml differs from the active run's brief beyond budgets; run `bash scripts/run.sh --archive` "
+                      "first to start a new run, or restore BRIEF.yaml", file=sys.stderr)
                 return 2
         run([sys.executable, "scripts/brief.py", "validate"], root)
         run([sys.executable, "scripts/ledger.py", "archive-stale"], root)
         config = runtime.load(runtime.state() / "controller.json")
         if not config:
-            started = dt.datetime.fromisoformat((runtime.state() / "started_at").read_text().strip().replace("Z", "+00:00")).timestamp()
-            config = {"schema": 3, "brief": b, "deadline": started + b["budgets"]["wall_clock_min"] * 60,
+            config = {"schema": 3, "brief": b, "deadline": started_at() + b["budgets"]["wall_clock_min"] * 60,
                       "hashes": hashes(root), "auth": check["auth"], "repository": check.get("repository")}
             runtime.atomic(runtime.state() / "controller.json", config)
         terminal = runtime.load(root / "docs/COMPLETION.json")
@@ -379,18 +421,19 @@ def main():
             if reason:
                 return finish(root, "SAFE_STOP" if reason == "cancelled" else "DONE_PARTIAL", reason)
             if rc or data.get("is_error"):
-                return finish(root, "SAFE_STOP", "Claude session failed; inspect last_stderr and resume evidence", {"lead_exit": rc})
+                return finish(root, "SAFE_STOP", "Claude session failed; inspect last_stderr and resume evidence",
+                              {"lead_exit": rc}, retryable=True)
             return finalize(root, config)
     except KeyboardInterrupt:
         return finish(root, "SAFE_STOP", "interrupted; session and ledgers preserved")
     except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as exc:
-        return finish(root, "ERROR", str(exc))
+        return finish(root, "ERROR", str(exc), retryable=True)
 
 
 if __name__ == "__main__":
     try:
         with runtime.file_lock("controller.lock"):
-            sys.exit(main())
+            sys.exit(main(sys.argv[1:]))
     except TimeoutError:
         print("run: another controller is active; no state changed", file=sys.stderr)
         sys.exit(2)

@@ -11,13 +11,20 @@ mk() { # repo with scripts/, two mission briefs and a stub lead (QS_RUN) that br
   (cd "$d" && git add -A && git commit -qm init)
   cat > "$d/stub_run.sh" <<'STUB'
 #!/usr/bin/env bash
-rm -f docs/RUN_STATE                                   # run.sh archives the previous mission's state
 g="$(sed -n 's/^  goal: "\(.*\)"/\1/p' BRIEF.yaml)"
 printf '%s|%s|%s\n' "$g" "$(git rev-parse HEAD)" "$(sed -n 's/^  base: "\(.*\)"/\1/p' BRIEF.yaml)" >> "$STUB_LOG"
+[ "$g" = "${STUB_FAIL:-}" ] && exit 1                 # crashes before archiving: the last mission's state stays
+rm -f docs/RUN_STATE                                   # run.sh archives the previous mission's state
+if [ "$g" = "${STUB_RETRY:-}" ] && [ ! -e .claude/state/stub-retried ]; then   # the lead crashes once
+  touch .claude/state/stub-retried
+  printf '{"state":"SAFE_STOP","reason":"crash","at":"y"}\n' > docs/RUN_STATE
+  printf '{"state":"SAFE_STOP","retryable":true}\n' > docs/COMPLETION.json; exit 3
+fi
 git checkout -q -b "mission/$g" 2>/dev/null || git checkout -q "mission/$g"
 echo "$g" > "$g.txt"; git add "$g.txt"; git commit -qm "$g"
-state=DONE; [ "$g" = "${STUB_PARTIAL:-}" ] && state=DONE_PARTIAL
+state=DONE; [ "$g" = "${STUB_PARTIAL:-}" ] && state=DONE_PARTIAL; [ "$g" = "${STUB_SAFE_STOP:-}" ] && state=SAFE_STOP
 printf '{"state":"%s","reason":"r","at":"x"}\n' "$state" > docs/RUN_STATE
+printf '{"state":"%s","retryable":false}\n' "$state" > docs/COMPLETION.json
 printf 'PR: https://github.com/example-owner/x/pull/%s\n' "${#g}" > docs/REPORT.md
 STUB
   chmod +x "$d/stub_run.sh"; echo "$d"
@@ -70,4 +77,23 @@ exit 2
 printf '{"state":"DONE","reason":"old","at":"x"}
 ' > "$d5/docs/RUN_STATE"
 expect_exit "run.sh exit 2 with a stale DONE: exit 3" 3 prog "$d5"
+
+# run.sh failing (exit 1) before it archives the last mission's DONE: that stale DONE is not mission 2's outcome
+d7="$(mk)"
+expect_exit "mission 2 fails before archiving: exit 3" 3 bash -c "cd '$d7' && QS_RUN='$d7/stub_run.sh' STUB_LOG='$d7/stub.log' STUB_FAIL=beta bash scripts/program.sh"
+phantom="$(awk -F'\t' '$1 ~ /02-beta/ && $2 == "DONE"' "$d7/.claude/state/program.tsv" | wc -l | tr -d ' ')"
+[ "$phantom" = 0 ] && ok "mission 2 failure is not logged as DONE" || bad "mission 2 failure is not logged as DONE ($(cat "$d7/.claude/state/program.tsv"))"
+expect_contains "mission 2 failure logs the real outcome" "FAILED rc=1" "$(cat "$d7/.claude/state/program.tsv")"
+: > "$d7/stub.log"
+expect_exit "re-run after mission 2 failed: exit 0" 0 prog "$d7"
+expect_contains "re-run runs mission 2" "beta|" "$(cat "$d7/stub.log")"
+
+# the runner marks a crashed lead retryable in COMPLETION.json: program.sh re-invokes run.sh within its passes
+d8="$(mk)"
+expect_exit "retryable SAFE_STOP then DONE: exit 0" 0 bash -c "cd '$d8' && QS_RUN='$d8/stub_run.sh' STUB_LOG='$d8/stub.log' STUB_RETRY=alpha bash scripts/program.sh"
+expect_contains "retryable SAFE_STOP: mission 1 ran twice, then mission 2" "alpha alpha beta" "$(cut -d'|' -f1 "$d8/stub.log" | tr '\n' ' ')"
+expect_contains "retryable SAFE_STOP: mission 1 logged DONE" "01-alpha.yaml	DONE" "$(cat "$d8/.claude/state/program.tsv")"
+d9="$(mk)"
+expect_exit "non-retryable SAFE_STOP: exit 3" 3 bash -c "cd '$d9' && QS_RUN='$d9/stub_run.sh' STUB_LOG='$d9/stub.log' STUB_SAFE_STOP=alpha bash scripts/program.sh"
+expect_contains "non-retryable SAFE_STOP: one pass only" "1" "$(wc -l < "$d9/stub.log" | tr -d ' ')"
 finish

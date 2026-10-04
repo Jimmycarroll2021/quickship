@@ -1,4 +1,6 @@
 """Launcher/preflight/publishing compatibility cases with simulated providers."""
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -31,14 +33,19 @@ class ControllerTests(unittest.TestCase):
 
     def call_main(self, lead_rc=0, payload=None, reason=None, finalize_rc=0):
         self.setup_launcher()
+        return self.invoke(lead_rc, payload, reason, finalize_rc)
+
+    def invoke(self, lead_rc=0, payload=None, reason=None, finalize_rc=0, real_ledger=False):
+        """One runner.main() against the current state; real_ledger runs the real `ledger.py archive-stale`."""
         calls=[]
         def launch(args, root, output, deadline, env):
             calls.append(args)
             runtime.atomic(output, payload if payload is not None else {'session_id':'session-123','is_error':False})
             return lead_rc, reason
         original = runner.run
+        stubbed = ('scripts/brief.py',) if real_ledger else ('scripts/brief.py','scripts/ledger.py')
         def commands(args, root, **kwargs):
-            if len(args)>1 and args[1] in ('scripts/brief.py','scripts/ledger.py'):
+            if len(args)>1 and args[1] in stubbed:
                 return 'current'
             return original(args,root,**kwargs)
         with patch.object(preflight,'inspect',return_value=self.check), patch.object(runner,'launch',side_effect=launch), \
@@ -46,6 +53,128 @@ class ControllerTests(unittest.TestCase):
                 patch.dict(os.environ,{'QS_OVERSEER':'0','QS_SLEEP':'0'}):
             code=runner.main()
         return code,calls
+
+    def test_early_lead_crashes_keep_controller_state_until_restart_limit(self):
+        # The lead dies before `ledger.py init` every time: no ledgers ever exist. The terminal RUN_STATE each
+        # failure leaves must not let archive-stale reset the deadline or the launch counter.
+        self.setup_launcher()
+        deadline=runtime.load(runtime.state()/'controller.json')['deadline']
+        launched=0
+        for attempt in range(1,7):
+            code,calls=self.invoke(lead_rc=1,payload={},real_ledger=True)
+            launched+=len(calls)
+            self.assertEqual(code,3)
+            self.assertEqual(runtime.load(runtime.state()/'controller.json')['deadline'],deadline)
+        self.assertEqual(launched,5)
+        self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['reason'],'restart limit (5) reached')
+        self.assertFalse((self.root/'docs/runs').exists())
+
+    def stale_run(self, ledgers):
+        """An earlier mission (different goal) that ended terminal, left in this checkout."""
+        self.setup_launcher()
+        earlier=dict(self.b,mission={'goal':'An earlier mission','deliverables':['README.md']})
+        runtime.atomic(runtime.state()/'controller.json',dict(self.config,brief=earlier))
+        runner.finish(self.root,'DONE','old')
+        runtime.atomic(runtime.state()/'session_id','old-session\n')
+        if ledgers:
+            runtime.atomic(self.root/'docs/ledgers/task.json',{'goal':'An earlier mission','plan':[]})
+
+    def test_lone_terminal_state_from_other_goal_is_archived_and_run_starts(self):
+        self.stale_run(ledgers=False)
+        code,calls=self.invoke(real_ledger=True)
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertEqual(len(list((self.root/'docs/runs').iterdir())),1)
+        self.assertEqual(runtime.load(runtime.state()/'controller.json')['brief']['mission']['goal'],'test')
+
+    def test_stale_other_goal_run_is_archived_and_not_resumed(self):
+        self.stale_run(ledgers=True)
+        code,calls=self.invoke(real_ledger=True)
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertNotIn('--resume',calls[0])
+        self.assertNotIn('old-session',calls[0])
+        self.assertEqual(len(list((self.root/'docs/runs').iterdir())),1)
+
+    def archive(self):
+        """`runner.main(['--archive'])` with the real ledger; no model may be launched."""
+        out,err=io.StringIO(),io.StringIO()
+        with patch.object(preflight,'inspect',return_value=self.check), patch.object(runner,'launch') as launch, \
+                redirect_stdout(out), redirect_stderr(err):
+            code=runner.main(['--archive'])
+        launch.assert_not_called()
+        return code,out.getvalue(),err.getvalue()
+
+    def test_archive_terminal_run_then_new_goal_starts_fresh(self):
+        self.setup_launcher()
+        runtime.atomic(runtime.state()/'session_id','session-1\n')
+        runner.finish(self.root,'DONE_PARTIAL','budget exhausted before final verification')
+        code,out,_=self.archive()
+        self.assertEqual(code,0)
+        self.assertIn('archived docs/runs/',out)
+        for gone in (runtime.state()/'controller.json',runtime.state()/'session_id',self.root/'docs/RUN_STATE'):
+            self.assertFalse(gone.exists(),gone)
+        new=dict(self.b,mission={'goal':'next goal','deliverables':['README.md']})
+        self.check['brief']=new
+        runtime.atomic(runtime.state()/'brief.json',new)
+        code,calls=self.invoke(real_ledger=True)
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertNotIn('--resume',calls[0])
+        self.assertEqual(runtime.load(runtime.state()/'controller.json')['brief']['mission']['goal'],'next goal')
+
+    def test_archive_refused_while_run_not_terminal(self):
+        self.setup_launcher()
+        runtime.atomic(runtime.state()/'session_id','session-1\n')
+        code,_,err=self.archive()
+        self.assertEqual(code,2)
+        self.assertIn('touch .claude/state/cancel',err)
+        self.assertTrue((runtime.state()/'controller.json').exists())
+        self.assertTrue((runtime.state()/'session_id').exists())
+
+    def test_run_sh_passes_archive_flag(self):
+        self.setup_launcher()
+        env=dict(os.environ,QS_PYTHON=sys.executable)
+        refused=subprocess.run([quality.bash(),'scripts/run.sh','--archive'],cwd=self.root,env=env,capture_output=True,text=True,timeout=60)
+        self.assertEqual(refused.returncode,2,refused.stderr)
+        runner.finish(self.root,'SAFE_STOP','cancelled')
+        archived=subprocess.run([quality.bash(),'scripts/run.sh','--archive'],cwd=self.root,env=env,capture_output=True,text=True,timeout=60)
+        self.assertEqual(archived.returncode,0,archived.stderr)
+        self.assertIn('archived docs/runs/',archived.stdout)
+
+    def test_budget_only_change_resumes_with_new_deadline(self):
+        (self.root/'BRIEF.yaml').write_text('budgets: {wall_clock_min: 60}\n')
+        self.setup_launcher()
+        runtime.atomic(runtime.state()/'session_id','session-1\n')
+        runner.finish(self.root,'DONE_PARTIAL','wall-clock deadline exceeded')
+        (self.root/'BRIEF.yaml').write_text('budgets: {wall_clock_min: 120}\n')
+        self.check['brief']=dict(self.b,budgets=dict(self.b['budgets'],wall_clock_min=120))
+        code,calls=self.invoke()
+        self.assertEqual((code,len(calls)),(0,1))
+        self.assertEqual(calls[0][calls[0].index('--resume')+1],'session-1')
+        config=runtime.load(runtime.state()/'controller.json')
+        started=runner.dt.datetime.fromisoformat((runtime.state()/'started_at').read_text().strip()).timestamp()
+        self.assertAlmostEqual(config['deadline'],started+120*60,places=3)
+        self.assertEqual(config['brief']['budgets']['wall_clock_min'],120)
+        self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['state'],'DONE_PARTIAL')
+        self.assertEqual(config['hashes'],runner.hashes(self.root))
+
+    def test_goal_change_without_archive_refused_with_hint(self):
+        self.setup_launcher()
+        runner.finish(self.root,'DONE_PARTIAL','budget exhausted before final verification')
+        self.check['brief']=dict(self.b,mission={'goal':'other goal','deliverables':['README.md']})
+        err=io.StringIO()
+        with redirect_stderr(err):
+            code,calls=self.invoke()
+        self.assertEqual((code,len(calls)),(2,0))
+        self.assertIn('bash scripts/run.sh --archive',err.getvalue())
+
+    def test_undecodable_chatty_stderr_does_not_block_the_child(self):
+        # 0x81 is invalid UTF-8 and undefined in cp1252: a strict decoder kills the drain thread, the pipe fills
+        # and the child blocks until the deadline.
+        child="import sys; sys.stderr.buffer.write(b'\\x81' + b'x' * 1000000); sys.stderr.flush()"
+        started=time.time()
+        rc,reason=runner.launch([sys.executable,'-c',child],self.root,runtime.state()/'child.json',time.time()+15,dict(os.environ))
+        self.assertEqual((rc,reason),(0,None))
+        self.assertLess(time.time()-started,10)
+        self.assertIn('�',(runtime.state()/'last_stderr.txt').read_text(encoding='utf-8'))
 
     def test_fresh_start_passes_flags_and_saves_session(self):
         code,calls=self.call_main()
@@ -105,6 +234,42 @@ class ControllerTests(unittest.TestCase):
         code,_=self.call_main(lead_rc=1,payload={'session_id':'session-123','is_error':True})
         self.assertEqual(code,3)
         self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['state'],'SAFE_STOP')
+
+    def retryable(self):
+        return runtime.load(self.root/'docs/COMPLETION.json')['retryable']
+
+    def test_lead_crash_is_retryable(self):
+        code,_=self.call_main(lead_rc=1,payload={})
+        self.assertEqual(code,3)
+        self.assertIs(self.retryable(),True)
+
+    def test_exception_error_is_retryable(self):
+        with patch.object(runner,'restore_controller_report',side_effect=OSError('disk unavailable')):
+            code,_=self.call_main()
+        self.assertEqual(code,5)
+        self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['state'],'ERROR')
+        self.assertIs(self.retryable(),True)
+
+    def test_final_outcomes_are_not_retryable(self):
+        self.setup_launcher()
+        for label,kwargs in (('cancelled',{'reason':'cancelled'}),('deadline',{'reason':'wall-clock deadline exceeded'})):
+            with self.subTest(label):
+                self.invoke(**kwargs)
+                self.assertIs(self.retryable(),False)
+        with self.subTest('restart limit'):
+            with runtime.transaction() as db:
+                runtime.put(db,'launches',5)
+            self.invoke()
+            self.assertIn('restart limit',runtime.load(self.root/'docs/RUN_STATE')['reason'])
+            self.assertIs(self.retryable(),False)
+        with self.subTest('budget'):
+            runtime.atomic(runtime.state()/'steps','1000')
+            self.invoke()
+            self.assertIs(self.retryable(),False)
+        for state in ('DONE','HALT','DONE_PARTIAL'):
+            with self.subTest(state):
+                runner.finish(self.root,state,'final')
+                self.assertIs(self.retryable(),False)
 
     def test_killed_run_recovers_transcript_session(self):
         transcript=runtime.state()/'session-abcd.jsonl';transcript.write_text('{}\n')
