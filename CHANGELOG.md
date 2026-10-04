@@ -36,6 +36,9 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
     SubagentStop evidence hook never blocks the same subagent twice.
   - An unquoted newline is a command separator for the guard in every mode.
   - The researcher has no shell again.
+  - `git push -uf` (and any short-flag cluster containing `f`) is caught as a force push.
+  - The guard decides whether a controller run is active the same way the controller does, so an
+    empty `controller.json` can no longer switch off the trifecta check.
   - `docs/RELEASE-EVIDENCE.md` no longer contains local paths, private repository names or session ids.
 
 ### Validation
