@@ -34,13 +34,16 @@ S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
 # so `git -C wt push` is matched as `git push`.
 SEGS=()
 split_subcmds() {
-  local seg q='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
+  local seg out q='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
   local opt_re="(^|[[:space:]])git[[:space:]]+(-C[[:space:]]+$q|-c[[:space:]]+$q|--(git-dir|work-tree)(=|[[:space:]]+)$q)[[:space:]]*"
+  # policy.py splits like Bash (quotes respected; unquoted newlines separate commands in every mode). If it cannot,
+  # deny: an empty SEGS would silently skip every per-subcommand rule below.
+  out="$(printf '%s' "$in" | "$PY" "$(dirname "$0")/../policy.py" --segments)" || { echo "guard: cannot split command, denied" >&2; exit 2; }
   while IFS= read -r seg; do
     seg="${seg#"${seg%%[![:space:]]*}"}"; [ -z "$seg" ] && continue
     while [[ "$seg" =~ $opt_re ]]; do seg="${seg/"${BASH_REMATCH[0]}"/${BASH_REMATCH[1]}git }"; done
     SEGS+=("$seg")
-  done < <(printf '%s' "$in" | "$PY" "$(dirname "$0")/../policy.py" --segments | tr -d '\r')
+  done <<< "${out//$'\r'/}"
 }
 [ "$tool" = Bash ] && split_subcmds
 deny() {

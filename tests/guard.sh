@@ -60,6 +60,9 @@ expect_exit "plan tier: allow planner dispatch" 0 hook guard.sh '{"hook_event_na
 expect_exit "plan tier: allow ledger.py" 0 hook guard.sh "$(bash_json "python3 scripts/ledger.py append note x y")"
 expect_exit "plan tier: quoted semicolon stays inside ledger argument" 0 hook guard.sh "$(bash_json "python3 scripts/ledger.py append note x 'planning; still one argument'")"
 expect_exit "plan tier: allow read-only pipe" 0 hook guard.sh "$(bash_json "git log --oneline | head -5")"
+expect_exit "plan tier: deny newline-joined git commit" 2 hook guard.sh "$(bash_json "ls\ngit commit -am x")"
+expect_exit "plan tier: deny newline-joined touch" 2 hook guard.sh "$(bash_json "ls\ntouch src/a.py")"
+expect_exit "plan tier: allow newline-joined read-only lines" 0 hook guard.sh "$(bash_json "ls\ngit status --short")"
 echo act > "$S/tier"
 expect_exit "act tier: allow bash npm test" 0 hook guard.sh "$(bash_json "npm test")"
 expect_exit "act tier: allow write src" 0 hook guard.sh "$(file_json Write "src/a.ts")"
@@ -175,6 +178,18 @@ expect_exit "security allowed: pytest -q" 0 hook guard.sh "$(agent_bash_json sec
 expect_exit "security allowed: brief test criterion verbatim" 0 hook guard.sh "$(agent_bash_json security "bash tools/verify.sh --strict")"
 expect_exit "security denied: criterion with extra args" 2 hook guard.sh "$(agent_bash_json security "bash tools/verify.sh --strict --fix")"
 rm -f "$S/brief.json"
+# an unquoted newline separates commands exactly like ';' (outside a controller run, as on main): the second line is
+# checked as its own subcommand, so it can neither ride on an allowed first line nor hide behind one
+[ ! -f "$S/controller.json" ] && ok "newline: these cases run outside a controller run" || bad "newline: controller.json present"
+for cmd in $'ls\nrm -f src/app.py' $'ls\npython -c "print(1)"' $'cat x\nnpm publish'; do
+  expect_exit "reviewer denied: newline-joined ${cmd//$'\n'/\\n}" 2 hook guard.sh "$(agent_bash_json reviewer "$cmd")"
+done
+expect_exit "reviewer allowed: newline-joined read-only lines" 0 hook guard.sh "$(agent_bash_json reviewer $'git status\ngit diff')"
+expect_exit "reviewer allowed: newline after && is a continuation" 0 hook guard.sh "$(agent_bash_json reviewer $'git status &&\ngit diff')"
+expect_exit "reviewer allowed: quoted newline stays inside its argument" 0 hook guard.sh "$(agent_bash_json reviewer $'grep -n \'a\nb\' README.md')"
+expect_exit "newline: cd before git denied" 2 hook guard.sh "$(agent_bash_json worker $'cd sub\ngit status')"
+expect_contains "newline: cd before git reason names git -C" "git -C" "$OUT"
+expect_exit "newline: force push on a second line denied" 2 hook guard.sh "$(agent_bash_json worker $'ls\ngit push --force origin feat/y')"
 # the lead (no agent_type) and other subagents are unaffected
 expect_exit "lead: npm install allowed in act tier" 0 hook guard.sh "$(bash_json "npm install x")"
 expect_exit "lead: Write src allowed in act tier" 0 hook guard.sh "$(file_json Write "src/a.ts")"
@@ -193,7 +208,7 @@ expect_contains "overseer write deny reason" "overseer may only write docs/overs
 for cmd in "python3 scripts/overseer_status.py" "python scripts/budget.py --exhausted-only" "git status --short" "tail -n 20 docs/ledgers/progress.jsonl" "git log --oneline | head -3"; do
   expect_exit "overseer bash allowed: $cmd" 0 ov_hook "$(bash_json "$cmd")"
 done
-for cmd in "npm test" "git status && npm install" "rm -r build" "python3 scripts/other.py" "git checkout -b feat/z"; do
+for cmd in "npm test" "git status && npm install" "rm -r build" "python3 scripts/other.py" "git checkout -b feat/z" "ls\ntouch src/a.py"; do
   expect_exit "overseer bash denied: $cmd" 2 ov_hook "$(bash_json "$cmd")"
 done
 expect_exit "overseer read allowed" 0 ov_hook "$(file_json Read "docs/ledgers/task.json")"

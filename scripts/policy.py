@@ -32,6 +32,31 @@ def protected(path, reading=False):
     return None
 
 
+def mark_newlines(command):
+    # Bash ends a command at an unquoted newline, exactly like ';'. shlex treats a
+    # newline as whitespace, so pad each unquoted one to stand alone as a separator
+    # token, drop backslash-newline line continuations and leave quoted newlines alone.
+    out, quote, i = [], None, 0
+    while i < len(command):
+        c = command[i]
+        if quote == "'":
+            quote = None if c == "'" else quote
+        elif c == "\\" and i + 1 < len(command):
+            if command[i + 1] != "\n":
+                out.append(command[i:i + 2])
+            i += 2
+            continue
+        elif quote == '"':
+            quote = None if c == '"' else quote
+        elif c in "'\"":
+            quote = c
+        elif c == "\n":
+            c = " \n "
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def argv_segments(command, strict=False):
     # Reject expansions rather than pretending shlex evaluates Bash. One narrow
     # inspection idiom used by the existing reviewer is explicitly supported.
@@ -39,7 +64,8 @@ def argv_segments(command, strict=False):
         return [["bash", "scripts/diffbase.sh"]]
     if strict and re.search(r"\$\(|`|<<|<\(|>\(|\$\{|\n", command):
         raise Denied("unsupported shell expansion; use one literal command")
-    lex = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+    lex = shlex.shlex(mark_newlines(command), posix=True, punctuation_chars=";&|<>\n")
+    lex.whitespace = " \t\r"
     lex.whitespace_split = True
     lex.commenters = ""
     try:
@@ -48,7 +74,13 @@ def argv_segments(command, strict=False):
         raise Denied("unparseable shell command") from e
     segments, current = [], []
     for token in tokens:
-        if token in ("&&", "||", ";", "|", "|&"):
+        if token == "\n":
+            # A newline may follow an operator (`a &&` NEWLINE `b`): an empty
+            # segment before it is a continuation, not an error.
+            if current:
+                segments.append(current)
+            current = []
+        elif token in ("&&", "||", ";", "|", "|&"):
             if not current:
                 raise Denied("empty shell subcommand")
             segments.append(current)
@@ -350,7 +382,8 @@ def main():
         event = json.load(sys.stdin)
         if "--segments" in sys.argv:
             for tokens in argv_segments(event["tool_input"]["command"], runtime.active()):
-                print(shlex.join(tokens))
+                # One segment per line: a quoted newline must not start another.
+                print(shlex.join(tokens).replace("\n", " ").replace("\r", " "))
             return 0
         check(event)
         return 0

@@ -160,6 +160,19 @@ class ReleaseTests(unittest.TestCase):
         for cmd in ('bash -c "git push origin main"', 'python -c "print(1)"', 'echo $(pwd)', 'echo `pwd`', 'cat <<EOF', 'ls &'):
             self.deny(self.event(cmd))
 
+    def test_newline_rejected_in_controller(self):
+        for cmd in ('ls\nrm -f src/app.py', 'git status\ngit push origin mission/test', 'echo "a\nb"'):
+            with self.subTest(command=cmd):
+                self.deny(self.event(cmd))
+
+    def test_newline_separates_commands_outside_controller(self):
+        self.assertEqual(policy.argv_segments('ls\nrm -f src/app.py'), [['ls'], ['rm', '-f', 'src/app.py']])
+        self.assertEqual(policy.argv_segments('git status &&\ngit diff\n\nls\n'), [['git', 'status'], ['git', 'diff'], ['ls']])
+        self.assertEqual(policy.argv_segments("grep 'a\nb' f"), [['grep', 'a\nb', 'f']])
+        self.assertEqual(policy.argv_segments('ls \\\n-l'), [['ls', '-l']])
+        with self.assertRaises(policy.Denied):
+            policy.argv_segments('ls\n&& rm x')
+
     def test_powershell_and_connectors(self):
         self.deny(self.event(tool='PowerShell', path='x'))
         self.deny({'tool_name': 'mcp__github__create_pull_request', 'tool_input': {}})
