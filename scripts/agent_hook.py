@@ -7,11 +7,16 @@ import sys
 import runtime
 
 
-def artifacts(brief):
+def artifacts(brief, missing_ok=False):
+    # missing_ok records an absent deliverable as None: a reviewer may legitimately
+    # grade FAIL *because* a deliverable is missing, and that grade must be kept.
     result = {}
     root = runtime.root()
     for name in brief["mission"]["deliverables"]:
         path = (root / name).resolve()
+        if path.is_relative_to(root) and not path.exists() and missing_ok:
+            result[name] = None
+            continue
         if not path.is_relative_to(root) or not path.exists():
             raise ValueError("missing or outside-project review artifact")
         if path.is_file():
@@ -53,7 +58,8 @@ def handle(event):
                 evidence = (match[3] or text[match.end():end]).strip()
                 if evidence and index < len(criteria) and criteria[index]["kind"] == "judge":
                     runtime.put(db, "judge:" + str(index), {"verdict": match[2].upper(), "evidence": evidence,
-                        "rubric": criteria[index]["rubric"], "artifacts": artifacts(brief), "agent_id": event.get("agent_id")})
+                        "rubric": criteria[index]["rubric"], "artifacts": artifacts(brief, missing_ok=match[2].upper() == "FAIL"),
+                        "agent_id": event.get("agent_id")})
         return 0
     if event.get("agent_type") == "security":
         text = event.get("last_assistant_message", "")
@@ -66,9 +72,18 @@ def handle(event):
     return 0
 
 
-if __name__ == "__main__":
+def main():
+    # On SubagentStop exit 2 forces the subagent to continue. Fail closed on any error,
+    # but only once: when Claude Code reports stop_hook_active the subagent is already
+    # continuing because of a stop hook, and trapping it again could loop forever.
+    event = {}
     try:
-        sys.exit(handle(json.load(sys.stdin)))
-    except (ValueError, KeyError, OSError) as exc:
-        print("agent hook: " + str(exc), file=sys.stderr)
-        sys.exit(2)
+        event = json.load(sys.stdin)
+        return handle(event)
+    except Exception as exc:
+        print("agent hook: " + type(exc).__name__ + ": " + str(exc), file=sys.stderr)
+        return 0 if isinstance(event, dict) and event.get("stop_hook_active") is True else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

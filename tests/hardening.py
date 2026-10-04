@@ -425,6 +425,37 @@ class ReleaseTests(unittest.TestCase):
                            'last_assistant_message':'Findings: none.\n\nJUDGE 1: PASS\n\nEvidence:\n- README.md: hello'})
         self.assertEqual(runner.verify_criteria(self.root,self.b,self.config)['passed'],2)
 
+    def agents_hook(self, event):
+        hook = Path(__file__).resolve().parents[1] / 'scripts/hooks/agents.sh'
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(self.root), QS_PYTHON=sys.executable)
+        return subprocess.run([quality.bash(), str(hook)], input=json.dumps(event), text=True,
+                              capture_output=True, env=env, timeout=60).returncode
+
+    def test_fail_grade_for_missing_deliverable_is_recorded(self):
+        self.b['mission']['deliverables'] = ['docs/missing.md']
+        self.b['success_criteria'] = [{'kind':'judge','rubric':'docs/missing.md explains setup'}]
+        runtime.atomic(runtime.state()/'controller.json', self.config)
+        self.register(aid='reviewer-1')
+        e = {'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
+             'last_assistant_message':'judge 0: FAIL: docs/missing.md does not exist'}
+        self.assertEqual(agent_hook.handle(e), 0)
+        with runtime.transaction() as db:
+            self.assertEqual(runtime.get(db, 'judge:0')['verdict'], 'FAIL')
+        self.assertEqual(self.agents_hook(e), 0)
+
+    def test_agent_hook_never_traps_a_subagent_twice(self):
+        self.b['mission']['deliverables'] = ['docs/missing.md']
+        self.b['success_criteria'] = [{'kind':'judge','rubric':'docs/missing.md explains setup'}]
+        runtime.atomic(runtime.state()/'controller.json', self.config)
+        self.register(aid='reviewer-1')
+        for message in ('judge 0: PASS: looks fine', 5):
+            with self.subTest(message=message):
+                e = {'hook_event_name':'SubagentStop','agent_type':'reviewer','agent_id':'reviewer-1',
+                     'last_assistant_message':message}
+                self.assertEqual(self.agents_hook(e), 2)
+                e['stop_hook_active'] = True
+                self.assertEqual(self.agents_hook(e), 0)
+
     def test_deliverable_path_escape(self):
         self.b['mission']['deliverables'] = ['../missing.md']
         runtime.atomic(self.root/'docs/RESULT.json',{'state':'READY'})
