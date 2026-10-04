@@ -56,11 +56,14 @@ for m in "${missions[@]}"; do
   fi
 
   st=""; rc=0
-  for _ in 1 2 3 4 5 6; do        # run.sh resumes the same session after a crash; it gives up itself after 5 restarts
+  # Re-invoke run.sh when it left no fresh terminal state or the runner marked the outcome retryable (a crashed lead,
+  # an interrupted controller): run.sh then resumes the same session. The runner gives up itself after 5 launches.
+  for _ in 1 2 3 4 5 6; do
     before="$(cat docs/RUN_STATE 2>/dev/null)"; touch "$S/program-mark"
     bash "$RUN"; rc=$?
     [ "$rc" = 2 ] && { st=""; break; }   # brief rejected before the last mission's state was archived
-    st="$(fresh_state "$before")"; [ -n "$st" ] && break
+    st="$(fresh_state "$before")"; [ -n "$st" ] || continue
+    [ "$st" != DONE ] && grep -q '"retryable": *true' docs/COMPLETION.json 2>/dev/null || break
   done
   [ "$rc" = 0 ] || [ "$st" != DONE ] || st=""   # DONE only counts with a zero exit
   outcome="${st:-FAILED rc=$rc}"

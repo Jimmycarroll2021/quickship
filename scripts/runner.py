@@ -51,8 +51,9 @@ def hashes(root):
     return result
 
 
-def finish(root, state, reason, details=None):
-    result = {"schema": 3, "state": state, "reason": reason, "at": now(), **(details or {})}
+def finish(root, state, reason, details=None, retryable=False):
+    # retryable: a plain rerun can resume this run (the lead crashed or an exception interrupted the controller).
+    result = {"schema": 3, "state": state, "reason": reason, "at": now(), "retryable": retryable, **(details or {})}
     runtime.atomic(root / "docs/RUN_STATE", {k: result[k] for k in ("state", "reason", "at")})
     runtime.atomic(root / "docs/COMPLETION.json", result)
     report = root / "docs/REPORT.md"
@@ -379,12 +380,13 @@ def main():
             if reason:
                 return finish(root, "SAFE_STOP" if reason == "cancelled" else "DONE_PARTIAL", reason)
             if rc or data.get("is_error"):
-                return finish(root, "SAFE_STOP", "Claude session failed; inspect last_stderr and resume evidence", {"lead_exit": rc})
+                return finish(root, "SAFE_STOP", "Claude session failed; inspect last_stderr and resume evidence",
+                              {"lead_exit": rc}, retryable=True)
             return finalize(root, config)
     except KeyboardInterrupt:
         return finish(root, "SAFE_STOP", "interrupted; session and ledgers preserved")
     except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as exc:
-        return finish(root, "ERROR", str(exc))
+        return finish(root, "ERROR", str(exc), retryable=True)
 
 
 if __name__ == "__main__":

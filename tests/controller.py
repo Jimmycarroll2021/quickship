@@ -151,6 +151,42 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(code,3)
         self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['state'],'SAFE_STOP')
 
+    def retryable(self):
+        return runtime.load(self.root/'docs/COMPLETION.json')['retryable']
+
+    def test_lead_crash_is_retryable(self):
+        code,_=self.call_main(lead_rc=1,payload={})
+        self.assertEqual(code,3)
+        self.assertIs(self.retryable(),True)
+
+    def test_exception_error_is_retryable(self):
+        with patch.object(runner,'restore_controller_report',side_effect=OSError('disk unavailable')):
+            code,_=self.call_main()
+        self.assertEqual(code,5)
+        self.assertEqual(runtime.load(self.root/'docs/RUN_STATE')['state'],'ERROR')
+        self.assertIs(self.retryable(),True)
+
+    def test_final_outcomes_are_not_retryable(self):
+        self.setup_launcher()
+        for label,kwargs in (('cancelled',{'reason':'cancelled'}),('deadline',{'reason':'wall-clock deadline exceeded'})):
+            with self.subTest(label):
+                self.invoke(**kwargs)
+                self.assertIs(self.retryable(),False)
+        with self.subTest('restart limit'):
+            with runtime.transaction() as db:
+                runtime.put(db,'launches',5)
+            self.invoke()
+            self.assertIn('restart limit',runtime.load(self.root/'docs/RUN_STATE')['reason'])
+            self.assertIs(self.retryable(),False)
+        with self.subTest('budget'):
+            runtime.atomic(runtime.state()/'steps','1000')
+            self.invoke()
+            self.assertIs(self.retryable(),False)
+        for state in ('DONE','HALT','DONE_PARTIAL'):
+            with self.subTest(state):
+                runner.finish(self.root,state,'final')
+                self.assertIs(self.retryable(),False)
+
     def test_killed_run_recovers_transcript_session(self):
         transcript=runtime.state()/'session-abcd.jsonl';transcript.write_text('{}\n')
         runtime.atomic(runtime.state()/'transcript_path',str(transcript))
