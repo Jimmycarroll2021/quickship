@@ -20,19 +20,19 @@ These cover cooperative command restrictions, worker ownership, subagent binding
 
 ## Live validation
 
-The private synthetic repository `Jimmycarroll2021/quickship-acceptance-20261003` contains a small Node helper and built-in Node tests, with no personal data or production services. Claude Code 2.1.288 used Claude subscription authentication (Max). Usage credits were disabled before testing; the work changed no billing settings. Dollar counters are API-equivalent estimates, not subscription charges. Live testing took place on Windows with Git Bash; Linux is covered by automated CI.
+A private synthetic acceptance repository, not published, contains a small Node helper and built-in Node tests, with no personal data or production services. Claude Code 2.1.288 used Claude subscription authentication. Usage credits were disabled before testing; the work changed no billing settings. Dollar counters are API-equivalent estimates, not subscription charges. Live testing took place on Windows with Git Bash; Linux is covered by automated CI.
 
-| Mission | Verified result | Private test PR | Final branch/PR SHA |
+| Mission | Verified result | Test PR (private repository) | Final branch/PR SHA |
 |---|---|---|---|
-| Require numeric arguments for the Node sum helper | DONE; five project tests passed | [#1](https://github.com/Jimmycarroll2021/quickship-acceptance-20261003/pull/1), base `main` | `b924618dc51b64b29b28762db434dd99aa78f65c` |
-| Explain the sum helper with a usage example | DONE; independent judge evidence matched the source and the project test passed | [#2](https://github.com/Jimmycarroll2021/quickship-acceptance-20261003/pull/2), base `main` | `c69cb4448d0c7e8af6fe9461f8cc606cbe725690` |
-| Write numerical examples, after a forced process crash | DONE; documentation criteria and final security checks passed | [#3](https://github.com/Jimmycarroll2021/quickship-acceptance-20261003/pull/3), base `mission/sum-usage-doc` | `6b25977af9eb55e266f17665a7d74a86731b129a` |
+| Require numeric arguments for the Node sum helper | DONE; five project tests passed | #1, base `main` | `b924618dc51b64b29b28762db434dd99aa78f65c` |
+| Explain the sum helper with a usage example | DONE; independent judge evidence matched the source and the project test passed | #2, base `main` | `c69cb4448d0c7e8af6fe9461f8cc606cbe725690` |
+| Write numerical examples, after a forced process crash | DONE; documentation criteria and final security checks passed | #3, base `mission/sum-usage-doc` | `6b25977af9eb55e266f17665a7d74a86731b129a` |
 
 The two documentation missions form a verified PR stack. Local heads, remote branch heads and GitHub PR heads match. The controller did not change the synthetic repository's prepared `main` SHA, `785de3bd1462dedb192123ebb88dfc9fbe1f2ddb`, or merge any PR.
 
 ### Interruption and recovery
 
-During the second documentation mission, the operator terminated only the owned Claude process tree after the worker had written and committed its document. The supervisor recorded SAFE_STOP. The session `74508187-045c-492f-a498-c25f03aff720`, original deadline and worker worktree/commit survived. The normal program launcher skipped the first completed mission and resumed the second in its existing checkout. Its step count increased from 40 at interruption to 96 at completion; it was not reset.
+During the second documentation mission, the operator terminated only the owned Claude process tree after the worker had written and committed its document. The supervisor recorded SAFE_STOP. The session, original deadline and worker worktree/commit survived. The normal program launcher skipped the first completed mission and resumed the second in its existing checkout. Its step count increased from 40 at interruption to 96 at completion; it was not reset.
 
 Final verification then caught uncommitted archived first-mission evidence and returned DONE_PARTIAL without publishing. Another invocation of the same launcher resumed the same session, committed that evidence and obtained a fresh security verdict on the new final commit. It subsequently published PR #3 and recorded DONE. This demonstrates recoverable completion; it does not claim that the model never needs a resume after an incomplete handoff.
 
@@ -51,7 +51,7 @@ Initial trials were preserved rather than relabelled as successes:
 - A reviewer used a judge ordinal, then another used uppercase/multiline evidence. The recorder now accepts the evidenced response format and resolves ordinal zero only for a sole, unambiguous judge; final verification still requires the actual matching reviewer response.
 - GitHub temporarily rate-limited publication. The controller returned ERROR instead of DONE. Retry exposed controller-owned report headings as dirty tracked content; resume now restores only the controller's exact last rendering and preserves later user edits.
 
-Raw synthetic transcripts, trial state and crash snapshots remain private in `C:\Users\Jimmy\quickship-acceptance-evidence-20261003`. The public evidence contains only synthetic project metadata and summarized results.
+Raw synthetic transcripts, trial state and crash snapshots are kept privately by the maintainer and are not published. This document contains only synthetic project metadata and summarized results, so the live rows above cannot be re-checked from public sources.
 
 ## Limits and release boundary
 

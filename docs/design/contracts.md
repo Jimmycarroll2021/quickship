@@ -62,7 +62,7 @@ Every script and hook in this repo builds to these contracts. They are the inter
 | `docs/ledgers/task.json` | `scripts/ledger.py` | lead, `hooks/anchor.sh`, overseer |
 | `docs/ledgers/progress.jsonl` | `scripts/ledger.py append` | lead, overseer |
 | `docs/ledgers/criteria.json` | `scripts/check_criteria.py` | lead, report |
-| `docs/RUN_STATE` | lead (or `hooks/stop.sh`, `run.sh` on give-up) | `hooks/stop.sh`, `run.sh`, `hooks/budget.sh` |
+| `docs/RUN_STATE`, `docs/COMPLETION.json` | the controller (`scripts/runner.py`) only; agents submit `docs/RESULT.json` instead | `hooks/stop.sh` (v0.2 path), `program.sh`, the controller on resume |
 | `docs/REPORT.md` | lead, last | human |
 | `docs/overseer.md` | overseer | lead, report |
 
@@ -102,7 +102,7 @@ ambiguity_policy: choose-default-and-record
 brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list), `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
 
 
-`validate` is the mission boundary: when the goal in the new brief differs from the goal already in `brief.json`, it deletes the gitignored runtime state (`started_at`, `session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`) and prints `brief: new mission goal; runtime state reset`, so a new mission never inherits the previous run's clock, step count or session. The same goal is a resume and leaves the state untouched.
+`validate` writes `brief.json`. Under the v0.3 controller a brief change is a mission boundary only through the controller: after a verified `DONE`, a brief with a new goal archives the finished run and starts fresh; a change to the `budgets` block alone keeps the same run with the new limits; any other change to an active or unfinished run is refused until the operator runs `bash scripts/run.sh --archive`. Archiving moves the run's documents and ledgers to `docs/runs/` and clears the gitignored runtime state (controller state, session, counters, flags, transcript record).
 ## Ledgers
 
 `docs/ledgers/task.json`:
@@ -144,7 +144,7 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 
 `exhausted` lists every dimension at or over its limit. With `--exhausted-only` prints only the comma-separated names (empty output when none). Exit 0 in both forms.
 
-`scripts/hooks/budget.sh` runs on PreToolUse and PostToolUse (matcher `.*`). No-op without brief.json. PostToolUse: increment `$S/steps`, then print additionalContext `BUDGET tokens=<n>/<limit> cost=<f>/<limit> min=<f>/<limit> steps=<n>/<limit>`. PreToolUse: if `exhausted` is non-empty, allow only `Read`, `Glob`, `Grep`, and `Write`/`Edit` whose `file_path` ends with `docs/REPORT.md` or `docs/RUN_STATE`; deny everything else with stderr `budget exhausted (<names>): write docs/RUN_STATE {"state":"DONE_PARTIAL"} and docs/REPORT.md, then stop`.
+`scripts/hooks/budget.sh` (delegating to `scripts/budget_hook.py`) runs on PreToolUse, PostToolUse and PostToolUseFailure (matcher `.*`). PostToolUse counts the call in `$S/steps` and prints additionalContext `BUDGET tokens=<n>/<limit> cost=<f>/<limit> min=<f>/<limit> steps=<n>/<limit>`. PreToolUse: once any dimension is exhausted, only reads and `Write`/`Edit` of `docs/RESULT.json` or `docs/REPORT.md` are allowed; everything else is denied with `budget exhausted (<names>): write docs/RESULT.json and docs/REPORT.md, then stop`. The hook fails closed: an error reading budget state denies the call.
 
 `budget.py` also prints `near`: the dimensions at or past 85% of their limit but not over it. The lead treats a non-empty `near` as the signal to stop dispatching and go to synthesis, because `budget.sh` denies every tool call except the report files once a dimension is exhausted.
 
@@ -154,7 +154,7 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 
 A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/ledgers/` into the next mission's checkout. `ledger.py archive-stale` (run by `run.sh` after the brief validates, and by the lead at step 1) prints `current` when there is no terminal RUN_STATE or its ledgers carry the brief's goal; otherwise it moves those files to `docs/runs/<at>-<goal-slug>/`, deletes the runtime state (`session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`), rewrites `started_at`, and prints `archived <dir>`.
 
-`scripts/hooks/stop.sh` (Stop hook): if brief.json is absent → `exec bash "$ROOT/scripts/gate.sh"` (ROOT = `CLAUDE_PROJECT_DIR`). If a run is active and RUN_STATE is missing or not terminal: increment `$S/stop_attempts`; on attempts 1 and 2 block with reason `no terminal RUN_STATE: write docs/RUN_STATE and docs/REPORT.md before stopping`; on attempt 3 write `{"state":"SAFE_STOP","reason":"lead ended without terminal state","at":...}` yourself and allow. If RUN_STATE is `HALT` → exit 0 without the gate. Otherwise run the gate and pass its exit through.
+`scripts/hooks/stop.sh` (Stop hook): the overseer and strategist roles exit 0. Under the v0.3 controller (`controller.json` present) it blocks the stop until `docs/RESULT.json` exists with `state` READY, DONE_PARTIAL, SAFE_STOP or HALT; the controller then verifies and decides. Without a controller and without `brief.json` it runs the gate. The v0.2 path below (RUN_STATE reminders, SAFE_STOP on the third attempt) applies only to runs with `brief.json` and no controller.
 
 ## Idempotency
 

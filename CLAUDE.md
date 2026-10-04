@@ -1,4 +1,4 @@
-# quickship ? agent instruction contract v0.3
+# quickship: agent instruction contract v0.3
 
 ## What this is
 A cooperative Claude Code harness for trusted development projects. The Python controller
