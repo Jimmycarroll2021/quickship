@@ -166,6 +166,27 @@ def bind(event, sid):
             runtime.put(db, "agent-head:" + aid, head)
 
 
+def research_bind(event, inp, cwd):
+    # The researcher reads untrusted web content, so it has no shell. It binds with its
+    # first Write instead: exactly "step-bind <id>" into its own findings file, which
+    # must be work/_untrusted/<slug>.md for that step's slug.
+    m = re.fullmatch(r"\s*step-bind\s+(\S+)\s*", str(inp.get("content", "")))
+    if not m:
+        return False
+    with runtime.transaction() as db:
+        step = runtime.get(db, "step:" + m[1])
+    if not step:
+        raise Denied("unregistered step")
+    slug = str(step.get("slug", ""))
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", slug):
+        raise Denied("research step slug is not a plain name")
+    expected = (runtime.root() / "work/_untrusted" / (slug + ".md")).resolve()
+    if not inside(expected, runtime.root()) or resolve_path(inp.get("file_path", ""), cwd) != expected:
+        raise Denied("researcher binds by writing step-bind <id> to its work/_untrusted/<slug>.md")
+    bind(event, m[1])
+    return True
+
+
 def check(event):
     tool = event["tool_name"]
     inp = event["tool_input"]
@@ -180,6 +201,9 @@ def check(event):
     cwd = event.get("cwd") or str(runtime.root())
     if active and tool == "Agent" and inp.get("subagent_type") not in ("planner", "worker", "reviewer", "security", "researcher"):
         raise Denied("use a registered Quickship agent type")
+    if (active and tool == "Write" and agent == "researcher" and event.get("agent_id") and
+            not bound_step(event) and research_bind(event, inp, cwd)):
+        return
     if active and tool != "Bash" and event.get("agent_id") and not bound_step(event):
         raise Denied("subagent must step-bind before work")
     if active and tool in ("Read", "Glob", "Grep"):
@@ -197,6 +221,8 @@ def check(event):
         cmd = inp["command"]
         if not isinstance(cmd, str):
             raise Denied("command must be a string")
+        if agent == "researcher":
+            raise Denied("researcher has no shell; it binds by writing step-bind <id> to its findings file")
         segs = argv_segments(cmd, active)
         if (active and len(segs) == 1 and len(segs[0]) == 4 and
                 segs[0][:3] in (["python", "scripts/ledger.py", "step-bind"],
@@ -205,8 +231,6 @@ def check(event):
             return
         if active and event.get("agent_id") and not bound_step(event):
             raise Denied("subagent must step-bind before work")
-        if active and agent == "researcher":
-            raise Denied("researcher has no shell capability beyond step-bind")
         for ts in segs:
             if not ts:
                 continue

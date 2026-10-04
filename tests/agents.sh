@@ -16,5 +16,10 @@ if [ -f "$S_MD" ]; then ok "security.md exists"; else bad "security.md exists"; 
 expect_contains "security: disallows Write and Edit" "disallowedTools: Write, Edit" "$(grep '^disallowedTools:' "$S_MD" 2>/dev/null)"
 expect_contains "worker: test that fails without it" "test that fails without it" "$(cat "$ROOT/.claude/agents/worker.md")"
 expect_contains "reviewer: behaviour change without a test fails" "without a test" "$(cat "$ROOT/.claude/agents/reviewer.md")"
+# the researcher reads untrusted web content (lethal-trifecta rule): it has no shell by frontmatter, in every mode
+R_MD="$ROOT/.claude/agents/researcher.md"
+case "$(grep '^tools:' "$R_MD")" in *Bash*) bad "researcher: tools has no Bash";; *) ok "researcher: tools has no Bash";; esac
+expect_contains "researcher: disallows Bash" "Bash" "$(grep '^disallowedTools:' "$R_MD")"
+expect_contains "researcher: binds without a shell" "step-bind <id>" "$(cat "$R_MD")"
 expect_contains "lead loop carries the same rule" "One command per Bash call" "$(cat "$ROOT/CLAUDE.md")"
 finish

@@ -228,6 +228,31 @@ class ReleaseTests(unittest.TestCase):
         self.deny(self.event(tool='Write', path='src/file.py', agent='researcher'))
         self.deny(self.event('ls', agent='researcher'))
 
+    def research_write(self, path, content, aid='research-1'):
+        e = self.event(tool='Write', path=path, agent='researcher', aid=aid)
+        e['tool_input']['content'] = content
+        return e
+
+    def test_researcher_binds_without_shell(self):
+        with runtime.transaction() as db:
+            runtime.put(db, 'step:s005', {'id': 's005', 'slug': 'research', 'legs': ['untrusted_content']})
+            runtime.put(db, 'step:s006', {'id': 's006', 'slug': 'other', 'legs': ['untrusted_content']})
+        self.deny(self.research_write('work/_untrusted/research.md', 'findings before binding'))
+        self.deny(self.research_write('work/_untrusted/research.md', 'step-bind s006'))
+        self.deny(self.research_write('work/_untrusted/research.md', 'step-bind s999'))
+        self.deny(self.event('python scripts/ledger.py step-bind s005', agent='researcher', aid='research-1'))
+        policy.check(self.research_write('work/_untrusted/research.md', 'step-bind s005'))
+        self.assertEqual(policy.bound_step(self.event('ls', agent='researcher', aid='research-1'))['id'], 's005')
+        policy.check(self.research_write('work/_untrusted/research.md', '# Findings'))
+        self.deny(self.research_write('work/_untrusted/other.md', '# Findings'))
+        self.deny(self.research_write('work/_untrusted/other.md', 'step-bind s006'))
+
+    def test_researcher_has_no_shell_outside_controller(self):
+        (runtime.state() / 'controller.json').unlink()
+        for cmd in ('ls', 'python scripts/ledger.py step-bind s001', 'cat work/_untrusted/x.md'):
+            with self.subTest(command=cmd):
+                self.deny(self.event(cmd, agent='researcher'))
+
     def test_read_only_roles(self):
         self.register()
         for role in ('reviewer', 'security'):
