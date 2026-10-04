@@ -29,7 +29,8 @@ def now():
 
 
 def run(args, root, timeout=30, check=True):
-    p = subprocess.run(args, cwd=root, capture_output=True, text=True, timeout=max(.1, timeout))
+    p = subprocess.run(args, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=max(.1, timeout))
     if check and p.returncode:
         raise ValueError("command failed: " + shlex.join(args[:3]) + ": " + p.stderr[-1000:])
     return p.stdout.strip()
@@ -102,9 +103,10 @@ def launch(args, root, output, deadline, env, cancellation=True):
     if args[0] == "claude" and os.name == "nt":
         args = [quality.bash(), "-c", "exec " + shlex.join(args)]
     with open(output, "w", encoding="utf-8", newline="\n") as f:
-        p = subprocess.Popen(args, cwd=root, stdout=f, stderr=subprocess.PIPE, text=True,
-                             env=env, start_new_session=os.name != "nt")
-        # stderr must be drained: otherwise a chatty child can deadlock on the pipe.
+        # Decode as UTF-8 with replacement: a strict locale codec (cp1252 on Windows) raising in the drain thread
+        # would stop draining, and stderr must be drained: otherwise a chatty child can deadlock on the pipe.
+        p = subprocess.Popen(args, cwd=root, stdout=f, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                             errors="replace", env=env, start_new_session=os.name != "nt")
         import threading
         errors = []
         thread = threading.Thread(target=lambda: errors.extend(p.stderr), daemon=True)

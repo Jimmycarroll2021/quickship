@@ -166,6 +166,16 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual((code,len(calls)),(2,0))
         self.assertIn('bash scripts/run.sh --archive',err.getvalue())
 
+    def test_undecodable_chatty_stderr_does_not_block_the_child(self):
+        # 0x81 is invalid UTF-8 and undefined in cp1252: a strict decoder kills the drain thread, the pipe fills
+        # and the child blocks until the deadline.
+        child="import sys; sys.stderr.buffer.write(b'\\x81' + b'x' * 1000000); sys.stderr.flush()"
+        started=time.time()
+        rc,reason=runner.launch([sys.executable,'-c',child],self.root,runtime.state()/'child.json',time.time()+15,dict(os.environ))
+        self.assertEqual((rc,reason),(0,None))
+        self.assertLess(time.time()-started,10)
+        self.assertIn('�',(runtime.state()/'last_stderr.txt').read_text(encoding='utf-8'))
+
     def test_fresh_start_passes_flags_and_saves_session(self):
         code,calls=self.call_main()
         self.assertEqual(code,0)

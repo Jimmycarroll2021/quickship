@@ -38,7 +38,8 @@ def root() -> Path:
     if env:
         return Path(env)
     try:
-        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", check=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise LedgerError("cannot resolve project root (set CLAUDE_PROJECT_DIR or run inside git)") from exc
     return Path(out.stdout.strip())
