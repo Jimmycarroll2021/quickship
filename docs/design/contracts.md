@@ -1,5 +1,44 @@
 # quickship runtime contracts
 
+## v0.3 controller contract (supersedes conflicting v0.2 sections below)
+
+The supported entrypoint remains `bash scripts/run.sh` / `run.cmd`; it delegates to a Python supervisor.
+Runtime schema is 3. The controller freezes the validated brief and harness hashes, enforces an absolute
+deadline across resumes, and alone publishes. Agents submit `docs/RESULT.json` (`state`: READY,
+DONE_PARTIAL, SAFE_STOP or HALT; `reason`: string). They do not write the authoritative RUN_STATE.
+Actual security responses and reviewer judge grades are captured by SubagentStop hooks, not supplied by the lead.
+Judge evidence must match the frozen rubric and the current deliverable hashes; security must match the commit at binding and completion.
+DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
+security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
+Exit codes: 0 verified DONE; 2 invalid preflight/brief; 3 partial/safe stop; 4 HALT; 5 controller failure.
+`docs/COMPLETION.json` carries `retryable` (boolean): true only when a plain rerun can resume the same run, that is
+the lead session crashed or failed (`SAFE_STOP`) or an exception interrupted the controller (`ERROR`).
+
+`bash scripts/run.sh --archive` is the operator's recovery command and makes no model call. With a terminal RUN_STATE
+it runs `ledger.py archive-stale --force` and prints `archived docs/runs/<at>-<goal-slug>` (exit 0). With no run at all
+it prints `run: nothing to archive` (exit 0). With an unfinished run it refuses with exit 2
+(`run: the current run is not terminal and its session may still resume; cancel it first ...`). A failed archive
+prints `run: archive failed: <error>` (exit 2); any other argument prints the usage line (exit 2).
+
+`quality` is optional: `profile: code|docs` (default code), and `lint`, `test`, `build`, each either
+a shell command string or `{skip: "human supplied reason"}`. Node defaults are the package-manager scripts;
+Python defaults are Ruff, pytest and build when a build system exists. Missing required checks fail.
+An unsupported code stack requires all three explicit entries. Docs mode permits only documentation changes.
+`maintenance: true` permits staging owned task-worktree edits to harness files. Changing the active main-checkout harness halts publication.
+Apply reviewed harness updates outside an active run, then start a fresh run with the updated safeguards.
+Cost figures are API-equivalent estimates for subscription accounts. API-authenticated sessions also receive
+the remaining `--max-budget-usd`; subscription sessions never switch billing or enable usage credits.
+
+Runtime mutations are serialized with SQLite transactions; file replacements use unique temporary files.
+Each step has a unique ID; subagents bind with `python scripts/ledger.py step-bind <id>` as their first command.
+The guard binds the hook's agent_id to that registered step before allowing owned-file writes. The legacy
+current_step file is a compatibility view only, never the authority for schema-3 hooks.
+Publishing reservations are run-wide, persisted before external calls, and reconciled against GitHub on resume.
+Unknown shell constructs, native PowerShell, external connectors, protected writes and agent-side publishing
+are refused. These are cooperative safeguards, not a sandbox for hostile project code/dependencies.
+Preflight is read-only (`python scripts/preflight.py`), supports Python 3.10+, Git Bash/Linux bash 4+,
+and Claude Code >=2.1.288. Old active runtime state is preserved and requires explicit migration/restart.
+
 Every script and hook in this repo builds to these contracts. They are the interface between the lead loop in `CLAUDE.md`, the hooks in `scripts/hooks/`, the CLIs in `scripts/`, and the tests in `tests/`. Change a contract here first, then the code.
 
 ## Conventions (all scripts)
@@ -31,7 +70,7 @@ Every script and hook in this repo builds to these contracts. They are the inter
 | `docs/ledgers/task.json` | `scripts/ledger.py` | lead, `hooks/anchor.sh`, overseer |
 | `docs/ledgers/progress.jsonl` | `scripts/ledger.py append` | lead, overseer |
 | `docs/ledgers/criteria.json` | `scripts/check_criteria.py` | lead, report |
-| `docs/RUN_STATE` | lead (or `hooks/stop.sh`, `run.sh` on give-up) | `hooks/stop.sh`, `run.sh`, `hooks/budget.sh` |
+| `docs/RUN_STATE`, `docs/COMPLETION.json` | the controller (`scripts/runner.py`) only; agents submit `docs/RESULT.json` instead | `hooks/stop.sh` (v0.2 path), `program.sh`, the controller on resume |
 | `docs/REPORT.md` | lead, last | human |
 | `docs/overseer.md` | overseer | lead, report |
 
@@ -71,7 +110,7 @@ ambiguity_policy: choose-default-and-record
 brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list), `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
 
 
-`validate` is the mission boundary: when the goal in the new brief differs from the goal already in `brief.json`, it deletes the gitignored runtime state (`started_at`, `session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`) and prints `brief: new mission goal; runtime state reset`, so a new mission never inherits the previous run's clock, step count or session. The same goal is a resume and leaves the state untouched.
+`validate` writes `brief.json`. Under the v0.3 controller a brief change is a mission boundary only through the controller: after a verified `DONE`, a brief with a new goal archives the finished run and starts fresh; a change to the `budgets` block alone keeps the same run with the new limits; any other change to an active or unfinished run is refused until the operator runs `bash scripts/run.sh --archive`. Archiving moves the run's documents and ledgers to `docs/runs/` and clears the gitignored runtime state (controller state, session, counters, flags, transcript record).
 ## Ledgers
 
 `docs/ledgers/task.json`:
@@ -113,7 +152,7 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 
 `exhausted` lists every dimension at or over its limit. With `--exhausted-only` prints only the comma-separated names (empty output when none). Exit 0 in both forms.
 
-`scripts/hooks/budget.sh` runs on PreToolUse and PostToolUse (matcher `.*`). No-op without brief.json. PostToolUse: increment `$S/steps`, then print additionalContext `BUDGET tokens=<n>/<limit> cost=<f>/<limit> min=<f>/<limit> steps=<n>/<limit>`. PreToolUse: if `exhausted` is non-empty, allow only `Read`, `Glob`, `Grep`, and `Write`/`Edit` whose `file_path` ends with `docs/REPORT.md` or `docs/RUN_STATE`; deny everything else with stderr `budget exhausted (<names>): write docs/RUN_STATE {"state":"DONE_PARTIAL"} and docs/REPORT.md, then stop`.
+`scripts/hooks/budget.sh` (delegating to `scripts/budget_hook.py`) runs on PreToolUse, PostToolUse and PostToolUseFailure (matcher `.*`). PostToolUse counts the call in `$S/steps` and prints additionalContext `BUDGET tokens=<n>/<limit> cost=<f>/<limit> min=<f>/<limit> steps=<n>/<limit>`. PreToolUse: once any dimension is exhausted, only reads and `Write`/`Edit` of `docs/RESULT.json` or `docs/REPORT.md` are allowed; everything else is denied with `budget exhausted (<names>): write docs/RESULT.json and docs/REPORT.md, then stop`. The hook fails closed: an error reading budget state denies the call.
 
 `budget.py` also prints `near`: the dimensions at or past 85% of their limit but not over it. The lead treats a non-empty `near` as the signal to stop dispatching and go to synthesis, because `budget.sh` denies every tool call except the report files once a dimension is exhausted.
 
@@ -121,9 +160,9 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 
 `docs/RUN_STATE` is exactly one line: `{"state": "DONE|DONE_PARTIAL|SAFE_STOP|HALT", "reason": "...", "at": "..."}`.
 
-A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/ledgers/` into the next mission's checkout. `ledger.py archive-stale` (run by `run.sh` after the brief validates, and by the lead at step 1) prints `current` when there is no terminal RUN_STATE or its ledgers carry the brief's goal; otherwise it moves those files to `docs/runs/<at>-<goal-slug>/`, deletes the runtime state (`session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`), rewrites `started_at`, and prints `archived <dir>`.
+A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/ledgers/` into the next mission's checkout. `ledger.py archive-stale` (run by `run.sh` after the brief validates, and by the lead at step 1) prints `current` when there is no terminal RUN_STATE, or its ledgers carry the brief's goal, or `controller.json`'s frozen brief carries it (a lead that crashed before `ledger.py init` leaves no task.json); otherwise it moves those files to `docs/runs/<at>-<goal-slug>/`, deletes the runtime state (`session_id`, `steps`, `restarts`, `stop_attempts`, `idem.jsonl`, `current_step.json`, `tier`, `cancel`, `force_replan`, `transcript_path`, `last_run.json`, `legs/`), rewrites `started_at`, and prints `archived <dir>`. `--force` archives a terminal run whatever its goal; `run.sh --archive` uses it.
 
-`scripts/hooks/stop.sh` (Stop hook): if brief.json is absent → `exec bash "$ROOT/scripts/gate.sh"` (ROOT = `CLAUDE_PROJECT_DIR`). If a run is active and RUN_STATE is missing or not terminal: increment `$S/stop_attempts`; on attempts 1 and 2 block with reason `no terminal RUN_STATE: write docs/RUN_STATE and docs/REPORT.md before stopping`; on attempt 3 write `{"state":"SAFE_STOP","reason":"lead ended without terminal state","at":...}` yourself and allow. If RUN_STATE is `HALT` → exit 0 without the gate. Otherwise run the gate and pass its exit through.
+`scripts/hooks/stop.sh` (Stop hook): the overseer and strategist roles exit 0. Under the v0.3 controller (`controller.json` present) it blocks the stop until `docs/RESULT.json` exists with `state` READY, DONE_PARTIAL, SAFE_STOP or HALT; the controller then verifies and decides. Without a controller and without `brief.json` it runs the gate. The v0.2 path below (RUN_STATE reminders, SAFE_STOP on the third attempt) applies only to runs with `brief.json` and no controller.
 
 ## Idempotency
 
@@ -164,7 +203,7 @@ Every denial appends `<utc ts>	DENY	<tool>	<reason>	<arg>` (five tab-separated f
 
 ## Mission chains
 
-`scripts/program.sh [missions-dir]` (default `docs/missions`) runs `NN-*.yaml` in order. It checks every brief first (exit 2 on any failure, nothing runs). For each mission not already `DONE` in `.claude/state/program.tsv` (`file<TAB>state<TAB>branch`): check out the previous mission's branch detached (the current HEAD for the first), write `BRIEF.yaml` from the mission file with `mission.base` set to that branch (none for the first), commit it on the detached HEAD, and call `scripts/run.sh` (`QS_RUN` overrides) up to six times until `docs/RUN_STATE` is terminal. It appends a row to `docs/PROGRAM.md` (mission, state, branch, PR URL from `docs/REPORT.md`). A state other than `DONE` stops the chain with exit 3. Re-running skips `DONE` missions. `main` never receives a commit.
+`scripts/program.sh [missions-dir]` (default `docs/missions`) runs `NN-*.yaml` in order. It checks every brief first (exit 2 on any failure, nothing runs). For each mission not already `DONE` in `.claude/state/program.tsv` (`file<TAB>state<TAB>branch`): check out the previous mission's branch detached (the current HEAD for the first), write `BRIEF.yaml` from the mission file with `mission.base` set to that branch (none for the first), commit it on the detached HEAD, and call `scripts/run.sh` (`QS_RUN` overrides) up to six times. A RUN_STATE counts for this mission only when this mission's runs wrote it: it is newer than `.claude/state/program-mark` (touched before each invocation) or differs from the copy taken before the invocation and the copy in `.claude/state/program-baseline` (taken when the mission began), so a predecessor's `DONE` left behind by a run.sh that failed early is never read as this mission's. It re-invokes run.sh while no fresh terminal state exists or `docs/COMPLETION.json` says `"retryable": true`; the runner's own five-launch limit still applies. Exit 2 from run.sh (brief rejected) stops at once. `DONE` counts only with run.sh exit 0; anything else is recorded as the state, or `FAILED rc=<n>` when no fresh state exists. It appends a row to `docs/PROGRAM.md` (mission, state, branch, PR URL from `docs/REPORT.md`). A state other than `DONE` stops the chain with exit 3. Re-running skips `DONE` missions. `main` never receives a commit.
 
 `scripts/diffbase.sh` prefers the brief's `mission.base` (`origin/<base>`, else `<base>`) over `origin/main`, so the reviewer and `security` see only the current mission's diff.
 

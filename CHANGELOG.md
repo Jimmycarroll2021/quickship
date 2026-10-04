@@ -2,6 +2,49 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
+## [0.3.0] - 2026-10-03
+
+### Changed
+
+- Publishing and authoritative completion moved to a separate Python supervisor. Exit 0 requires
+  independent gate, criteria, deliverable, final-commit security and GitHub branch/PR verification.
+- Quality checks no longer silently pass when missing. Briefs support explicit commands, skip reasons
+  and a documentation-only profile that rejects application-code changes.
+- Safeguards are documented as cooperative controls, not an OS sandbox. Subscription cost values
+  are API-equivalent estimates. Supported platforms are Ubuntu/Windows Git Bash, Python 3.10+,
+  Claude Code >=2.1.288. Cloud/macOS execution remain unverified.
+- Exit codes: 0 DONE, 2 invalid setup/brief, 3 partial/safe stop, 4 HALT, 5 controller failure.
+
+### Fixed
+
+- PR-merge/protected-ref/deployment-write policy gaps; agents no longer have publishing authority.
+- Full incremental transcript accounting, serialized counters/ledgers and per-agent step bindings.
+- Controller deadlines terminate owned process trees and preserve interruption/resume evidence.
+- Upgrade checksums reflect actual target files; skipped modifications preserve the installed version
+  and block preflight until conflicts are resolved.
+- Review fixes before release:
+  - A lead that crashed before writing its ledgers no longer loses the run: `archive-stale` also
+    recognises the goal frozen in `controller.json`, so the next launch resumes instead of archiving.
+  - `program.sh` no longer reads a predecessor's `DONE` as the current mission's when `run.sh` fails
+    early. `DONE` also requires exit 0; otherwise the chain records `FAILED rc=<n>` and stops.
+  - `program.sh` retries only outcomes the controller marks `retryable` in `COMPLETION.json`
+    (a crashed lead or an interrupted controller).
+  - `bash scripts/run.sh --archive` archives a finished run so a changed brief can start fresh; it
+    refuses an unfinished one. A change to the `budgets` block alone continues the same run.
+  - Child output is read as UTF-8 with replacement, so undecodable stderr can't block the lead.
+  - Hooks fail closed: the budget hook denies on any error, the gate exits only 0 or 2, and the
+    SubagentStop evidence hook never blocks the same subagent twice.
+  - An unquoted newline is a command separator for the guard in every mode.
+  - The researcher has no shell again.
+  - `git push -uf` (and any short-flag cluster containing `f`) is caught as a force push.
+  - The guard decides whether a controller run is active the same way the controller does, so an
+    empty `controller.json` can no longer switch off the trifecta check.
+  - `docs/RELEASE-EVIDENCE.md` no longer contains local paths, private repository names or session ids.
+
+### Validation
+
+See docs/RELEASE-EVIDENCE.md for verified results and remaining release gates.
+
 ## [0.2.0] - 2026-10-03
 
 ### Added
@@ -44,6 +87,7 @@ First public release: a Claude Code harness that takes one Mission Brief and shi
 
 Seven unattended missions ran with this release, including a real application and a kill-and-resume run. The figures, recomputed in 0.1.1 from the full transcripts, are in the README under "Track record".
 
+[0.3.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.0

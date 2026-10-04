@@ -4,7 +4,9 @@
 source "$(dirname "$0")/lib.sh"
 mk() { # mk <dir>: fresh git repo with a copy of scripts/ and an initial commit
   git init -q -b main "$1" && cp -r "$ROOT/scripts" "$1/" && (cd "$1" && git add -A && git -c user.email=t@t -c user.name=t commit -qm init)
+  seed_quality "$1"
 }
+seed_quality() { printf 'quality:\n  lint:\n    skip: "fixture"\n  test: "true"\n  build:\n    skip: "fixture"\n' > "$1/BRIEF.yaml"; }
 run_stop() { # run_stop <repo> <json> -> runs the real stop.sh against <repo> as CLAUDE_PROJECT_DIR
   ( cd "$1" && CLAUDE_PROJECT_DIR="$1" bash "$ROOT/scripts/hooks/stop.sh" <<<"$2" )
 }
@@ -12,11 +14,11 @@ attempts() { cat "$1/.claude/state/stop_attempts" 2>/dev/null; }
 stop_json='{"hook_event_name":"Stop","session_id":"s1","transcript_path":"/tmp/t.jsonl","stop_hook_active":false}'
 
 # --- no brief.json: no-op run, stop hook just gates ---
-r1="$(tmpdir)"; mk "$r1"
+r1="$(tmpdir)"; mk "$r1"; seed_quality "$r1"
 expect_exit "no brief.json: gate runs, clean repo passes" 0 run_stop "$r1" "$stop_json"
 
 # --- brief.json present, no RUN_STATE: 2 blocks then forced SAFE_STOP on the 3rd ---
-r2="$(tmpdir)"; mk "$r2"; mkdir -p "$r2/.claude/state"; printf '{}' > "$r2/.claude/state/brief.json"
+r2="$(tmpdir)"; mk "$r2"; seed_quality "$r2"; mkdir -p "$r2/.claude/state"; printf '{}' > "$r2/.claude/state/brief.json"
 expect_exit "no RUN_STATE, attempt 1: blocked" 2 run_stop "$r2" "$stop_json"
 expect_contains "attempt 1: block reason" "no terminal RUN_STATE: write docs/RUN_STATE and docs/REPORT.md before stopping" "$OUT"
 [ "$(attempts "$r2")" = "1" ] && ok "attempt 1: stop_attempts=1" || bad "attempt 1: stop_attempts=$(attempts "$r2")"

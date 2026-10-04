@@ -24,8 +24,10 @@ import json
 import os
 import subprocess
 import sys
+import runtime
 
-MAX_BYTES = 20 * 1024 * 1024  # stop reading transcripts after this much in total
+# All transcript lines are counted. The incremental controller cache is serialized separately.
+MAX_BYTES = None
 # USD per million tokens. Cache read = 10% of input; cache creation = 125% of input.
 RATES = {"opus": (15.0, 75.0), "sonnet": (3.0, 15.0), "haiku": (1.0, 5.0)}
 DIMS = (("tokens", "tokens"), ("cost_usd", "cost_usd"), ("elapsed_min", "wall_clock_min"), ("steps", "steps"))
@@ -91,7 +93,7 @@ def transcript_files(path):
 
 def usage(path):
     """Return (tokens, cache_read_tokens, cost_usd); see the module docstring for what `tokens` counts."""
-    tokens, cache_read, cost, budget, seen = 0, 0, 0.0, MAX_BYTES, set()
+    tokens, cache_read, cost, seen = 0, 0, 0.0, set()
     for p in transcript_files(path):
         try:
             f = open(p, "rb")
@@ -99,9 +101,6 @@ def usage(path):
             continue
         with f:
             for raw in f:
-                budget -= len(raw)
-                if budget < 0:
-                    return tokens, cache_read, cost
                 try:
                     msg = json.loads(raw).get("message") or {}
                     u = msg.get("usage")
@@ -123,6 +122,62 @@ def usage(path):
                 cache_read += cr
                 cost += (i * rin + o * rout + cr * rin * 0.1 + cc * rin * 1.25) / 1e6
     return tokens, cache_read, cost
+
+
+def incremental_usage(path):
+    """Read only complete new lines, but aggregate all sessions in this run."""
+    import hashlib
+    with runtime.transaction() as db:
+        paths = runtime.get(db, "transcripts", [])
+        path = normalize_path(path)
+        if path and path not in paths:
+            paths.append(path)
+            runtime.put(db, "transcripts", paths)
+        files = sorted({p for t in paths for p in transcript_files(normalize_path(t))})
+        for file in files:
+            with open(file, "rb") as f:
+                fingerprint = hashlib.sha256(f.read(256)).hexdigest()
+                size = os.path.getsize(file)
+                key = "usage:" + os.path.abspath(file)
+                record = runtime.get(db, key, {"offset": 0, "messages": {}, "fingerprint": fingerprint})
+                # Prefix can grow while a small file is being written. Only compare
+                # fingerprints once the previous prefix was at least 256 bytes.
+                if size < record["offset"] or (record["offset"] >= 256 and record["fingerprint"] != fingerprint):
+                    record["offset"] = 0
+                    record["fingerprint"] = fingerprint
+                    record["generation"] = record.get("generation", 0) + 1
+                f.seek(record["offset"])
+                while True:
+                    at = f.tell()
+                    raw = f.readline()
+                    if not raw or not raw.endswith(b"\n"):
+                        f.seek(at)
+                        break
+                    try:
+                        message = json.loads(raw).get("message") or {}
+                        u = message.get("usage")
+                        if not isinstance(u, dict):
+                            continue
+                        mid = message.get("id") or file + ":" + str(record.get("generation", 0)) + ":" + str(at)
+                        i, o = int(u.get("input_tokens") or 0), int(u.get("output_tokens") or 0)
+                        cc, cr = int(u.get("cache_creation_input_tokens") or 0), int(u.get("cache_read_input_tokens") or 0)
+                        rin, rout = rates_for(message.get("model"))
+                        values = [i + o + cc, cr, (i * rin + o * rout + cc * rin * 1.25 + cr * rin * .1) / 1e6]
+                        previous = record["messages"].get(mid, [0, 0, 0])
+                        record["messages"][mid] = [max(a, b) for a, b in zip(previous, values)]
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+                record["offset"] = f.tell()
+                record["fingerprint"] = fingerprint
+                runtime.put(db, key, record)
+        # Keep charges from cached files that have been rotated or removed. A replayed
+        # message ID counts once; later usage updates can increase, never lower it.
+        charged = {}
+        for row in db.execute("SELECT value FROM kv WHERE key LIKE 'usage:%'"):
+            for mid, values in json.loads(row[0])["messages"].items():
+                prior = charged.get(mid, [0, 0, 0])
+                charged[mid] = [max(a, b) for a, b in zip(prior, values)]
+        return tuple(sum(values[i] for values in charged.values()) for i in range(3))
 
 
 def elapsed_min(started_at):
@@ -153,8 +208,16 @@ def main():
         steps = int(read_text(os.path.join(s, "steps")) or 0)
     except ValueError:
         steps = 0
-    transcript = a.transcript or normalize_path(read_text(os.path.join(s, "transcript_path"))) or None
-    tokens, cache_read, cost = usage(transcript)
+    controller_path = os.path.join(s, "controller.json")
+    if os.path.isfile(controller_path):
+        with open(controller_path, encoding="utf-8") as f:
+            controller = json.load(f)
+        budgets = controller["brief"]["budgets"]
+    transcript = normalize_path(a.transcript or read_text(os.path.join(s, "transcript_path"))) or None
+    if os.path.isfile(controller_path) and (not transcript or not os.path.isfile(transcript)):
+        print("budget: transcript unavailable; accounting degraded", file=sys.stderr)
+        return 2
+    tokens, cache_read, cost = incremental_usage(transcript) if os.path.isfile(controller_path) else usage(transcript)
     # existing fields keep their names: budget.sh reads tokens/cost_usd/elapsed_min/steps by name
     vals = {"tokens": tokens, "cache_read_tokens": cache_read, "tokens_total": tokens + cache_read,
             "cost_usd": round(cost, 4),

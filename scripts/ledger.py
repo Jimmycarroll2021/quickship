@@ -6,6 +6,7 @@ Stdlib only, Python 3.10+.
 """
 from __future__ import annotations
 
+import runtime
 import argparse
 import hashlib
 import json
@@ -37,7 +38,8 @@ def root() -> Path:
     if env:
         return Path(env)
     try:
-        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", check=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise LedgerError("cannot resolve project root (set CLAUDE_PROJECT_DIR or run inside git)") from exc
     return Path(out.stdout.strip())
@@ -65,10 +67,7 @@ def progress_path() -> Path:
 
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text)
-    os.replace(tmp, path)
+    runtime.atomic(path, text)
 
 
 def load_task() -> dict:
@@ -101,6 +100,9 @@ def read_progress() -> list[dict]:
 
 
 def next_step_id() -> str:
+    if runtime.active():
+        with runtime.transaction() as db:
+            return f"s{runtime.increment(db, 'step-sequence'):03d}"
     return f"s{len(read_progress()) + 1:03d}"
 
 
@@ -265,6 +267,9 @@ def cmd_step_start(a) -> int:
     if "untrusted_content" in legs and "outbound" in legs:
         raise LedgerError("a step may not combine untrusted_content and outbound legs")
     step = {"id": next_step_id(), "slug": a.slug, "legs": legs, "ts": now()}
+    if runtime.active():
+        with runtime.transaction() as db:
+            runtime.put(db, "step:" + step["id"], step)
     write_atomic(state_dir() / "current_step.json", json.dumps(step) + "\n")
     print(step["id"])
     return 0
@@ -285,27 +290,28 @@ def cmd_tier(a) -> int:
     return 0
 
 
-TERMINAL_STATES = ("DONE", "DONE_PARTIAL", "SAFE_STOP", "HALT")
-RUN_ARTIFACTS = ("RUN_STATE", "REPORT.md", "plan.md", "overseer.md")
+TERMINAL_STATES = ("DONE", "DONE_PARTIAL", "SAFE_STOP", "HALT", "ERROR")
+RUN_ARTIFACTS = ("RUN_STATE", "REPORT.md", "plan.md", "overseer.md", "RESULT.json", "COMPLETION.json")
 RUNTIME_STATE = ("session_id", "steps", "restarts", "stop_attempts", "idem.jsonl", "current_step.json", "tier",
-                 "cancel", "force_replan", "transcript_path", "last_run.json")
+                 "cancel", "force_replan", "transcript_path", "last_run.json", "controller.json", "runtime.sqlite3", "runtime.sqlite3-journal")
 
 
 def cmd_archive_stale(a) -> int:
     """A merged mission PR carries docs/RUN_STATE and the ledgers into the next mission's checkout. When that
     terminal state belongs to a different goal than the current brief, move the old run under docs/runs/ and
-    reset the runtime state so the new mission starts fresh. Prints `current` or `archived <dir>`."""
+    reset the runtime state so the new mission starts fresh. --force archives any terminal run regardless of goal
+    (the operator's `run.sh --archive`, which holds the controller lock). Prints `current` or `archived <dir>`."""
     import re
     import shutil
     docs = root() / "docs"
     rs = docs / "RUN_STATE"
     brief_p = state_dir() / "brief.json"
-    if not rs.is_file() or not brief_p.is_file():
+    if not rs.is_file() or not (brief_p.is_file() or a.force):
         print("current")
         return 0
     try:
         state = json.loads(rs.read_text(encoding="utf-8").strip() or "{}")
-        goal = json.loads(brief_p.read_text(encoding="utf-8"))["mission"]["goal"]
+        goal = json.loads(brief_p.read_text(encoding="utf-8"))["mission"]["goal"] if brief_p.is_file() else None
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise LedgerError(f"cannot read RUN_STATE or brief.json: {exc}") from exc
     if state.get("state") not in TERMINAL_STATES:
@@ -317,12 +323,19 @@ def cmd_archive_stale(a) -> int:
             old_goal = json.loads(task_path().read_text(encoding="utf-8")).get("goal")
         except json.JSONDecodeError:
             old_goal = None
-    # Same goal with its ledgers = the run that just finished; leave it. A different goal, or a terminal state
-    # with no ledgers at all (a run that ended before planning), cannot be resumed and is archived.
-    if old_goal is not None and old_goal == goal:
+    run_goal = None
+    try:
+        run_goal = json.loads((state_dir() / "controller.json").read_text(encoding="utf-8"))["brief"]["mission"]["goal"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        run_goal = None
+    # Same goal with its ledgers = the run that just finished; leave it. The controller's frozen brief also
+    # identifies the current run when the lead failed before `ledger.py init`: archiving that would reset its
+    # deadline, launch counter and budget on every rerun. A different goal, or a terminal state with neither
+    # ledgers nor controller state (a legacy run that ended before planning), cannot be resumed and is archived.
+    if not a.force and goal is not None and goal in (old_goal, run_goal):
         print("current")
         return 0
-    slug = re.sub(r"[^a-z0-9]+", "-", (old_goal or "run").lower()).strip("-")[:24].rstrip("-") or "run"
+    slug = re.sub(r"[^a-z0-9]+", "-", (old_goal or run_goal or "run").lower()).strip("-")[:24].rstrip("-") or "run"
     at = re.sub(r"[^0-9A-Za-z]+", "-", str(state.get("at") or now())).strip("-")
     dest = docs / "runs" / f"{at}-{slug}"
     n = 1
@@ -385,18 +398,21 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("stall-check").set_defaults(fn=cmd_stall_check)
     s = sub.add_parser("replan"); s.add_argument("--slug", default="-"); s.add_argument("--detail", default="")
     s.set_defaults(fn=cmd_replan)
+    s = sub.add_parser("step-bind"); s.add_argument("id"); s.set_defaults(fn=lambda a: 0)
     s = sub.add_parser("step-start"); s.add_argument("slug"); s.add_argument("--legs", required=True)
     s.set_defaults(fn=cmd_step_start)
     s = sub.add_parser("facts-invalidate"); s.add_argument("substring"); s.set_defaults(fn=cmd_facts_invalidate)
     s = sub.add_parser("tier"); s.add_argument("value", nargs="?", default=None); s.set_defaults(fn=cmd_tier)
-    sub.add_parser("archive-stale").set_defaults(fn=cmd_archive_stale)
+    s = sub.add_parser("archive-stale"); s.add_argument("--force", action="store_true")
+    s.set_defaults(fn=cmd_archive_stale)
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return args.fn(args)
+        with runtime.file_lock():
+            return args.fn(args)
     except LedgerError as exc:
         print(f"ledger.py: {exc}", file=sys.stderr)
         return 2

@@ -5,26 +5,31 @@
 #
 # Clauses, in order:  1 hard rules (always)   1b read-only subagents (agent_type reviewer or security)   1c overseer role
 # (QS_ROLE=overseer; exempt from the rest)   2 overseer cancel flag   3 plan/act tier   4 lethal-trifecta legs.
-# Clauses 2-4 act only when their state file exists (.claude/state/{cancel,tier,current_step.json}), i.e. during a run.
+# Clauses 2-4 act only when their state file exists (.claude/state/{cancel,tier,current_step.json}), i.e. during a run;
+# clause 4 is off in a v0.3 controller run (runtime.active(): controller.json with schema 3), where policy.py governs.
 # PostToolUse never denies; it only records the leg a tool call used (clause 4).
 # Every PreToolUse call leaves one line in .claude/state/hook_log:  allowed  <utc ts>\t<tool>\t<arg>
 #                                                                   denied   <utc ts>\tDENY\t<tool>\t<reason>\t<arg>
 set -u
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
 in="$(cat)"
+printf '%s' "$in" | "$PY" "$(dirname "$0")/../policy.py" || exit 2
 parsed="$(printf '%s' "$in" | "$PY" -c '
 import json, sys
+sys.path.insert(0, sys.argv[1]); import runtime
 d = json.load(sys.stdin); e = d.get("hook_event_name", "PreToolUse"); t = d["tool_name"]; i = d["tool_input"]
 a = d.get("agent_type") or "lead"   # subagent type; absent for the lead session
 if t == "Bash": v = i["command"]
 elif t in ("Write", "Edit", "MultiEdit", "Read"): v = i["file_path"]
 elif t.startswith("mcp__"): v = " ".join(f"{k}={i[k]}" for k in ("head", "base", "title", "url") if i.get(k))  # log summary only
 else: v = i.get("url") or i.get("query") or ""
-print(e); print(t); print(str(a)); print(str(v))
-' 2>/dev/null)" || { echo "guard: malformed hook input, denied" >&2; exit 2; }
+c = 1 if runtime.active() else 0   # a controller run: the same schema-3 test policy.py and the runner use
+print(e); print(t); print(c); print(str(a)); print(str(v))
+' "$(dirname "$0")/.." 2>/dev/null)" || { echo "guard: malformed hook input or runtime state, denied" >&2; exit 2; }
 parsed="${parsed//$'\r'/}"   # python on Windows emits CRLF
 event="${parsed%%$'\n'*}"; rest="${parsed#*$'\n'}"
 tool="${rest%%$'\n'*}"; rest="${rest#*$'\n'}"
+controlled="${rest%%$'\n'*}"; rest="${rest#*$'\n'}"
 agent="${rest%%$'\n'*}"; raw="${rest#*$'\n'}"; arg="${raw//$'\n'/ }"   # raw keeps newlines for the split
 case "$tool" in Write|Edit|MultiEdit|Read) arg="${arg//\\//}";; esac   # Windows tools pass backslash paths
 S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
@@ -33,13 +38,16 @@ S="${CLAUDE_PROJECT_DIR:-.}/.claude/state"; mkdir -p "$S" 2>/dev/null
 # so `git -C wt push` is matched as `git push`.
 SEGS=()
 split_subcmds() {
-  local seg q='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
+  local seg out q='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
   local opt_re="(^|[[:space:]])git[[:space:]]+(-C[[:space:]]+$q|-c[[:space:]]+$q|--(git-dir|work-tree)(=|[[:space:]]+)$q)[[:space:]]*"
+  # policy.py splits like Bash (quotes respected; unquoted newlines separate commands in every mode). If it cannot,
+  # deny: an empty SEGS would silently skip every per-subcommand rule below.
+  out="$(printf '%s' "$in" | "$PY" "$(dirname "$0")/../policy.py" --segments)" || { echo "guard: cannot split command, denied" >&2; exit 2; }
   while IFS= read -r seg; do
     seg="${seg#"${seg%%[![:space:]]*}"}"; [ -z "$seg" ] && continue
     while [[ "$seg" =~ $opt_re ]]; do seg="${seg/"${BASH_REMATCH[0]}"/${BASH_REMATCH[1]}git }"; done
     SEGS+=("$seg")
-  done < <(printf '%s\n' "$raw" | sed -E 's/(&&|\|\||\|&|;|\|)/\n/g')
+  done <<< "${out//$'\r'/}"
 }
 [ "$tool" = Bash ] && split_subcmds
 deny() {
@@ -78,7 +86,7 @@ leg_of() { # untrusted_content | outbound | none, for this tool call
 
 # --- PostToolUse: record the leg for the current step, never deny ---
 if [ "$event" = PostToolUse ]; then
-  if [ -f "$S/current_step.json" ]; then
+  if [ "$controlled" != 1 ] && [ -f "$S/current_step.json" ]; then
     sid="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id","nostep"))' "$S/current_step.json" 2>/dev/null)"; sid="${sid//$'\r'/}"
     leg="$(leg_of)"; mkdir -p "$S/legs"
     [ "$leg" != none ] && [ -n "$sid" ] && echo "$leg" >> "$S/legs/$sid"
@@ -91,7 +99,7 @@ case "$tool" in
   Bash) # each rule sees one subcommand, so a token in another subcommand can neither trip nor mask it
     for seg in "${SEGS[@]}"; do
       if [[ "$seg" =~ git[[:space:]]+push ]]; then
-        [[ "$seg" =~ [[:space:]](--force|--force-with-lease|-f)([[:space:]]|$) || "$seg" =~ [[:space:]]\+[^[:space:]] ]] && deny "force push"
+        [[ "$seg" =~ [[:space:]](--force|--force-with-lease|-[A-Za-z]*f[A-Za-z]*)([[:space:]]|$) || "$seg" =~ [[:space:]]\+[^[:space:]] ]] && deny "force push"   # -f also inside -uf
         [[ "$seg" =~ ([[:space:]]|:)(main|master)([[:space:]]|$) ]] && deny "push to main"
       fi
       [[ "$seg" =~ git[[:space:]]+reset[[:space:]]+--hard ]] && deny "git reset --hard"
@@ -171,7 +179,7 @@ fi
 if [ -f "$S/cancel" ]; then
   case "$tool" in
     Read|Glob|Grep) ;;
-    Write|Edit|MultiEdit) [[ "$arg" =~ docs/(REPORT\.md|RUN_STATE)$ ]] || deny "overseer cancel: only docs/REPORT.md and docs/RUN_STATE may be written";;
+    Write|Edit|MultiEdit) [[ "$arg" =~ docs/(REPORT\.md|RUN_STATE|RESULT\.json)$ ]] || deny "overseer cancel: only docs/REPORT.md, docs/RESULT.json and docs/RUN_STATE may be written";;
     *) deny "overseer cancel: the run is stopping";;
   esac
 fi
@@ -180,6 +188,7 @@ fi
 tier="$(cat "$S/tier" 2>/dev/null)"; tier="${tier//[$'\r\n ']/}"
 if [ "$tier" = plan ]; then
   case "$tool" in
+    Agent) ;;
     Read|Glob|Grep) ;;
     Write|Edit|MultiEdit) [[ "$arg" =~ (^|/)(docs/plan\.md|docs/ledgers/|\.claude/state/) ]] || deny "plan tier: cannot write $arg";;
     Bash)
@@ -191,7 +200,7 @@ if [ "$tier" = plan ]; then
 fi
 
 # --- 4. lethal trifecta: one step never both reads untrusted content and sends data out ---
-if [ -f "$S/current_step.json" ]; then
+if [ "$controlled" != 1 ] && [ -f "$S/current_step.json" ]; then
   stepinfo="$("$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id","nostep")); print(",".join(d.get("legs",[])))' "$S/current_step.json" 2>/dev/null)"
   stepinfo="${stepinfo//$'\r'/}"; sid="${stepinfo%%$'\n'*}"; declared="${stepinfo#*$'\n'}"
   leg="$(leg_of)"

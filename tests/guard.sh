@@ -8,11 +8,11 @@ file_json() { printf '{"hook_event_name":"PreToolUse","tool_name":"%s","tool_inp
 for cmd in "git push --force origin main" "git push -f origin main" "git push --force-with-lease origin feat/x" \
            "git push origin main" "git push origin HEAD:main" "git push -u origin master" \
            "git reset --hard HEAD~1" "git branch -D feat/x" "git checkout -- ." \
-           "pip install requests" "pip3 install requests" "rm -rf node_modules" "cat .env" "cat ./.env.local"; do
+           "pip install requests" "pip3 install requests" "rm -rf node_modules" "cat .env" "cat ./.env.local"            "git push -uf origin feat/x" "git push -fu origin feat/x" "git -C wt push -vf origin feat/x"; do
   expect_exit "deny bash: $cmd" 2 hook guard.sh "$(bash_json "$cmd")"
 done
 for cmd in "git push origin mission/x" "git push -u origin feat/s1-safe-scaffold" "npm test" "cat .env.example" \
-           "git checkout -b feat/y" "git branch -d feat/x" "rm -r build"; do
+           "git checkout -b feat/y" "git branch -d feat/x" "rm -r build" "git push -u --follow-tags origin feat/x"; do
   expect_exit "allow bash: $cmd" 0 hook guard.sh "$(bash_json "$cmd")"
 done
 for f in ".env" ".env.production" "src/.env.local" "vercel.json" "fly.toml" "infra/main.tf" ".github/workflows/deploy.yml" "Dockerfile.deploy"; do
@@ -45,6 +45,9 @@ expect_exit "cancel: deny bash ls" 2 hook guard.sh "$(bash_json "ls")"
 expect_exit "cancel: deny write src" 2 hook guard.sh "$(file_json Write "src/a.ts")"
 expect_exit "cancel: allow write REPORT.md" 0 hook guard.sh "$(file_json Write "docs/REPORT.md")"
 expect_exit "cancel: allow write RUN_STATE" 0 hook guard.sh "$(file_json Write "docs/RUN_STATE")"
+expect_exit "cancel: allow write RESULT.json" 0 hook guard.sh "$(file_json Write "docs/RESULT.json")"
+expect_exit "cancel: deny write src (reason)" 2 hook guard.sh "$(file_json Write "src/a.ts")"
+expect_contains "cancel: deny reason lists every writable file" "only docs/REPORT.md, docs/RESULT.json and docs/RUN_STATE may be written" "$OUT"
 expect_exit "cancel: allow read" 0 hook guard.sh "$(file_json Read "src/a.ts")"
 rm -f "$S/cancel"
 
@@ -56,8 +59,13 @@ expect_exit "plan tier: deny compound with write" 2 hook guard.sh "$(bash_json "
 expect_exit "plan tier: allow write docs/plan.md" 0 hook guard.sh "$(file_json Write "docs/plan.md")"
 expect_exit "plan tier: allow write ledgers" 0 hook guard.sh "$(file_json Edit "docs/ledgers/task.json")"
 expect_exit "plan tier: allow git status" 0 hook guard.sh "$(bash_json "git status --short")"
+expect_exit "plan tier: allow planner dispatch" 0 hook guard.sh '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"planner","prompt":"Plan the registered task"}}'
 expect_exit "plan tier: allow ledger.py" 0 hook guard.sh "$(bash_json "python3 scripts/ledger.py append note x y")"
+expect_exit "plan tier: quoted semicolon stays inside ledger argument" 0 hook guard.sh "$(bash_json "python3 scripts/ledger.py append note x 'planning; still one argument'")"
 expect_exit "plan tier: allow read-only pipe" 0 hook guard.sh "$(bash_json "git log --oneline | head -5")"
+expect_exit "plan tier: deny newline-joined git commit" 2 hook guard.sh "$(bash_json "ls\ngit commit -am x")"
+expect_exit "plan tier: deny newline-joined touch" 2 hook guard.sh "$(bash_json "ls\ntouch src/a.py")"
+expect_exit "plan tier: allow newline-joined read-only lines" 0 hook guard.sh "$(bash_json "ls\ngit status --short")"
 echo act > "$S/tier"
 expect_exit "act tier: allow bash npm test" 0 hook guard.sh "$(bash_json "npm test")"
 expect_exit "act tier: allow write src" 0 hook guard.sh "$(file_json Write "src/a.ts")"
@@ -173,6 +181,18 @@ expect_exit "security allowed: pytest -q" 0 hook guard.sh "$(agent_bash_json sec
 expect_exit "security allowed: brief test criterion verbatim" 0 hook guard.sh "$(agent_bash_json security "bash tools/verify.sh --strict")"
 expect_exit "security denied: criterion with extra args" 2 hook guard.sh "$(agent_bash_json security "bash tools/verify.sh --strict --fix")"
 rm -f "$S/brief.json"
+# an unquoted newline separates commands exactly like ';' (outside a controller run, as on main): the second line is
+# checked as its own subcommand, so it can neither ride on an allowed first line nor hide behind one
+[ ! -f "$S/controller.json" ] && ok "newline: these cases run outside a controller run" || bad "newline: controller.json present"
+for cmd in $'ls\nrm -f src/app.py' $'ls\npython -c "print(1)"' $'cat x\nnpm publish'; do
+  expect_exit "reviewer denied: newline-joined ${cmd//$'\n'/\\n}" 2 hook guard.sh "$(agent_bash_json reviewer "$cmd")"
+done
+expect_exit "reviewer allowed: newline-joined read-only lines" 0 hook guard.sh "$(agent_bash_json reviewer $'git status\ngit diff')"
+expect_exit "reviewer allowed: newline after && is a continuation" 0 hook guard.sh "$(agent_bash_json reviewer $'git status &&\ngit diff')"
+expect_exit "reviewer allowed: quoted newline stays inside its argument" 0 hook guard.sh "$(agent_bash_json reviewer $'grep -n \'a\nb\' README.md')"
+expect_exit "newline: cd before git denied" 2 hook guard.sh "$(agent_bash_json worker $'cd sub\ngit status')"
+expect_contains "newline: cd before git reason names git -C" "git -C" "$OUT"
+expect_exit "newline: force push on a second line denied" 2 hook guard.sh "$(agent_bash_json worker $'ls\ngit push --force origin feat/y')"
 # the lead (no agent_type) and other subagents are unaffected
 expect_exit "lead: npm install allowed in act tier" 0 hook guard.sh "$(bash_json "npm install x")"
 expect_exit "lead: Write src allowed in act tier" 0 hook guard.sh "$(file_json Write "src/a.ts")"
@@ -191,7 +211,7 @@ expect_contains "overseer write deny reason" "overseer may only write docs/overs
 for cmd in "python3 scripts/overseer_status.py" "python scripts/budget.py --exhausted-only" "git status --short" "tail -n 20 docs/ledgers/progress.jsonl" "git log --oneline | head -3"; do
   expect_exit "overseer bash allowed: $cmd" 0 ov_hook "$(bash_json "$cmd")"
 done
-for cmd in "npm test" "git status && npm install" "rm -r build" "python3 scripts/other.py" "git checkout -b feat/z"; do
+for cmd in "npm test" "git status && npm install" "rm -r build" "python3 scripts/other.py" "git checkout -b feat/z" "ls\ntouch src/a.py"; do
   expect_exit "overseer bash denied: $cmd" 2 ov_hook "$(bash_json "$cmd")"
 done
 expect_exit "overseer read allowed" 0 ov_hook "$(file_json Read "docs/ledgers/task.json")"
@@ -219,6 +239,19 @@ if [ ! -s "$S/legs/s032" ]; then ok "mcp: no leg recorded for unrelated tool"; e
 expect_exit "mcp: create_pull_request in a fresh step allowed" 0 hook guard.sh "$(mcp_json PreToolUse mcp__github__create_pull_request "$pr_input")"
 expect_contains "mcp: hook_log arg is the head/base/title summary" $'mcp__github__create_pull_request\thead=mission/x base=main title=t' "$(tail -n 1 "$S/hook_log")"
 rm -f "$S/current_step.json"
+# ---- a controller.json that is not schema 3 is not a controller run (runtime.active(), as policy.py and the runner
+# decide): it must not switch off the trifecta legs or the state-file write limits outside a run ----
+printf '{}' > "$S/controller.json"
+printf '{"id":"s040","slug":"x","legs":[]}' > "$S/current_step.json"
+expect_exit "{} controller.json: PostToolUse WebFetch records leg" 0 hook guard.sh "$(web_json PostToolUse)"
+expect_contains "{} controller.json: legs file has untrusted_content" "untrusted_content" "$(cat "$S/legs/s040" 2>/dev/null)"
+printf '{"id":"s041","slug":"x","legs":["untrusted_content"]}' > "$S/current_step.json"
+expect_exit "{} controller.json: push after untrusted content denied" 2 hook guard.sh "$(bash_json "git push origin mission/x")"
+expect_contains "{} controller.json: trifecta reason" "trifecta" "$OUT"
+expect_exit "{} controller.json: overseer may not write .claude/state/tier" 2 ov_hook "$(file_json Write ".claude/state/tier")"
+expect_exit "{} controller.json: researcher may not write .claude/state" 2 hook guard.sh "$(agent_file_json researcher Write ".claude/state/current_step.json")"
+expect_exit "{} controller.json: reviewer may not write .claude/state" 2 hook guard.sh "$(agent_file_json reviewer Write ".claude/state/current_step.json")"
+rm -f "$S/controller.json" "$S/current_step.json"
 # ---- DENY log: a denied call leaves exactly one five-field line  <utc ts>\tDENY\t<tool>\t<reason>\t<arg> ----
 before="$(wc -l < "$S/hook_log")"
 hook guard.sh "$(bash_json "git push origin main")" >/dev/null 2>&1
