@@ -8,11 +8,11 @@ file_json() { printf '{"hook_event_name":"PreToolUse","tool_name":"%s","tool_inp
 for cmd in "git push --force origin main" "git push -f origin main" "git push --force-with-lease origin feat/x" \
            "git push origin main" "git push origin HEAD:main" "git push -u origin master" \
            "git reset --hard HEAD~1" "git branch -D feat/x" "git checkout -- ." \
-           "pip install requests" "pip3 install requests" "rm -rf node_modules" "cat .env" "cat ./.env.local"; do
+           "pip install requests" "pip3 install requests" "rm -rf node_modules" "cat .env" "cat ./.env.local"            "git push -uf origin feat/x" "git push -fu origin feat/x" "git -C wt push -vf origin feat/x"; do
   expect_exit "deny bash: $cmd" 2 hook guard.sh "$(bash_json "$cmd")"
 done
 for cmd in "git push origin mission/x" "git push -u origin feat/s1-safe-scaffold" "npm test" "cat .env.example" \
-           "git checkout -b feat/y" "git branch -d feat/x" "rm -r build"; do
+           "git checkout -b feat/y" "git branch -d feat/x" "rm -r build" "git push -u --follow-tags origin feat/x"; do
   expect_exit "allow bash: $cmd" 0 hook guard.sh "$(bash_json "$cmd")"
 done
 for f in ".env" ".env.production" "src/.env.local" "vercel.json" "fly.toml" "infra/main.tf" ".github/workflows/deploy.yml" "Dockerfile.deploy"; do
@@ -45,6 +45,9 @@ expect_exit "cancel: deny bash ls" 2 hook guard.sh "$(bash_json "ls")"
 expect_exit "cancel: deny write src" 2 hook guard.sh "$(file_json Write "src/a.ts")"
 expect_exit "cancel: allow write REPORT.md" 0 hook guard.sh "$(file_json Write "docs/REPORT.md")"
 expect_exit "cancel: allow write RUN_STATE" 0 hook guard.sh "$(file_json Write "docs/RUN_STATE")"
+expect_exit "cancel: allow write RESULT.json" 0 hook guard.sh "$(file_json Write "docs/RESULT.json")"
+expect_exit "cancel: deny write src (reason)" 2 hook guard.sh "$(file_json Write "src/a.ts")"
+expect_contains "cancel: deny reason lists every writable file" "only docs/REPORT.md, docs/RESULT.json and docs/RUN_STATE may be written" "$OUT"
 expect_exit "cancel: allow read" 0 hook guard.sh "$(file_json Read "src/a.ts")"
 rm -f "$S/cancel"
 

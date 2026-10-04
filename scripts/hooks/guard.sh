@@ -99,7 +99,7 @@ case "$tool" in
   Bash) # each rule sees one subcommand, so a token in another subcommand can neither trip nor mask it
     for seg in "${SEGS[@]}"; do
       if [[ "$seg" =~ git[[:space:]]+push ]]; then
-        [[ "$seg" =~ [[:space:]](--force|--force-with-lease|-f)([[:space:]]|$) || "$seg" =~ [[:space:]]\+[^[:space:]] ]] && deny "force push"
+        [[ "$seg" =~ [[:space:]](--force|--force-with-lease|-[A-Za-z]*f[A-Za-z]*)([[:space:]]|$) || "$seg" =~ [[:space:]]\+[^[:space:]] ]] && deny "force push"   # -f also inside -uf
         [[ "$seg" =~ ([[:space:]]|:)(main|master)([[:space:]]|$) ]] && deny "push to main"
       fi
       [[ "$seg" =~ git[[:space:]]+reset[[:space:]]+--hard ]] && deny "git reset --hard"
@@ -179,7 +179,7 @@ fi
 if [ -f "$S/cancel" ]; then
   case "$tool" in
     Read|Glob|Grep) ;;
-    Write|Edit|MultiEdit) [[ "$arg" =~ docs/(REPORT\.md|RUN_STATE|RESULT\.json)$ ]] || deny "overseer cancel: only docs/REPORT.md and docs/RUN_STATE may be written";;
+    Write|Edit|MultiEdit) [[ "$arg" =~ docs/(REPORT\.md|RUN_STATE|RESULT\.json)$ ]] || deny "overseer cancel: only docs/REPORT.md, docs/RESULT.json and docs/RUN_STATE may be written";;
     *) deny "overseer cancel: the run is stopping";;
   esac
 fi

@@ -251,7 +251,7 @@ def check(event):
                     if a[0] in ("checkout", "switch", "branch") and any(x in ("main", "master", "refs/heads/main", "refs/heads/master") for x in a[1:]) and not any(x in a for x in ("-b", "-c")):
                         raise Denied("protected branch mutation")
                 if a and a[0] == "push":
-                    if any(x.startswith("--force") or x == "-f" or x.startswith("+") for x in a[1:]):
+                    if any(x.startswith(("--force", "+")) or re.fullmatch(r"-[A-Za-z]*f[A-Za-z]*", x) for x in a[1:]):
                         raise Denied("force push")
                     for x in a[1:]:
                         dest = x.split(":")[-1].removeprefix("refs/heads/")

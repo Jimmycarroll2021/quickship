@@ -68,6 +68,16 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(command=cmd):
                 self.deny(self.event(cmd))
 
+    def test_combined_short_force_flag_outside_controller(self):
+        (runtime.state() / 'controller.json').unlink()
+        self.b['permissions']['irreversible']['default'] = 'allow'
+        runtime.atomic(runtime.state() / 'brief.json', self.b)
+        policy.check(self.event('git push -u origin mission/test'))
+        for cmd in ('git push -uf origin mission/test', 'git push -fu origin mission/test', 'git -C . push -qf origin mission/test'):
+            with self.subTest(command=cmd):
+                with self.assertRaisesRegex(policy.Denied, 'force push'):
+                    policy.check(self.event(cmd))
+
     def test_agent_cannot_publish(self):
         self.b['permissions']['irreversible']['default'] = 'allow'
         for cmd in ('git push origin mission/test', 'gh pr create --title test', 'npm publish'):
