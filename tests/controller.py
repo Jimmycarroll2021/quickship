@@ -348,6 +348,46 @@ quality:
         self.assertTrue(any('v0.2 active state' in x for x in info['errors']))
         self.assertEqual((runtime.state()/'session_id').read_text(),'old')
 
+    def test_pr_body_contains_traceability_and_verified_evidence(self):
+        self.b['mission']['requirements']=['REQ-007']
+        body=runner.render_pr_body(self.b,'mission/test','abc',{'files':2,'lines':37,'binary':0})
+        self.assertIn('## Traceability',body)
+        self.assertIn('`REQ-007`',body)
+        self.assertIn('## Scope',body)
+        self.assertIn('**Raw changed lines:** `37`',body)
+        self.assertIn('**Files changed:** `2`',body)
+        self.assertIn('Controller independently verified the final gate',body)
+        self.assertIn('**Final commit:** `abc`',body)
+        self.assertIn('Latest CI is green',body)
+
+    def test_publication_creates_structured_pr_body(self):
+        self.b['permissions']['irreversible']['default']='allow'
+        self.b['mission']['requirements']=['REQ-007']
+        pub={'url':'https://github.com/example/test/pull/1','headRefOid':'abc','headRefName':'mission/test','baseRefName':'main'}
+        created={'value':False}
+        captured={}
+        def provider(args,root,**kw):
+            if args[:3]==['gh','repo','view']:
+                return 'main'
+            if args[:2]==['git','ls-remote']:
+                return 'abc\trefs/heads/mission/test'
+            if args[:3]==['git','diff','--numstat']:
+                return '10\t2\ta.py\n5\t0\tb.py'
+            if args[:3]==['gh','pr','list']:
+                return json.dumps([pub] if created['value'] else [])
+            if args[:3]==['gh','pr','create']:
+                body_path=Path(args[args.index('--body-file')+1])
+                captured['body']=body_path.read_text(encoding='utf-8')
+                created['value']=True
+                return pub['url']
+            return ''
+        with patch.object(runner,'run',side_effect=provider):
+            result=runner.publish(self.root,self.config,'mission/test','abc')
+        self.assertEqual(result['url'],pub['url'])
+        self.assertIn('## Traceability',captured['body'])
+        self.assertIn('`REQ-007`',captured['body'])
+        self.assertIn('**Raw changed lines:** `17`',captured['body'])
+        self.assertIn('GitHub CI starts from this published PR',captured['body'])
     def test_publication_reconciles_existing_pr(self):
         self.b['permissions']['irreversible']['allow']=['git push origin mission/*','gh pr create*']
         pub={'url':'https://github.com/example/test/pull/1','headRefOid':'abc','headRefName':'mission/test','baseRefName':'main'}
