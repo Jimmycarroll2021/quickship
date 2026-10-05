@@ -359,6 +359,9 @@ quality:
         self.assertEqual(scope['excluded'],['package-lock.json'])
 
     def test_pr_body_uses_repo_template_and_controller_evidence(self):
+        (self.root/'.github').mkdir(exist_ok=True)
+        shutil.copy(Path(__file__).resolve().parents[1]/'.github/pull_request_template.md',
+                    self.root/'.github/pull_request_template.md')
         runtime.atomic(self.root/'docs/REPORT.md','# Lead report\n\nVerified evidence.\n')
         with patch.object(runner,'pr_scope',return_value={'reviewable_lines':123,'files':7,'excluded':['uv.lock']}):
             body=runner.render_pr_body(self.root,self.b,'mission/test','main','abc123')
