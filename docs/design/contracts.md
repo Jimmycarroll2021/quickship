@@ -34,6 +34,10 @@ Each step has a unique ID; subagents bind with `python scripts/ledger.py step-bi
 The guard binds the hook's agent_id to that registered step before allowing owned-file writes. The legacy
 current_step file is a compatibility view only, never the authority for schema-3 hooks.
 Publishing reservations are run-wide, persisted before external calls, and reconciled against GitHub on resume.
+PRD requirements use stable `REQ-xxx` identifiers; mission briefs may carry those IDs in
+`mission.requirements` so the controller can preserve requirement-to-mission-to-PR traceability.
+A mission is normally one reviewable PR, targeting no more than 500 human-written changed lines
+and 10 changed files; generated/lock/snapshot/mechanical changes are excluded from the line target.
 Unknown shell constructs, native PowerShell, external connectors, protected writes and agent-side publishing
 are refused. These are cooperative safeguards, not a sandbox for hostile project code/dependencies.
 Preflight is read-only (`python scripts/preflight.py`), supports Python 3.10+, Git Bash/Linux bash 4+,
@@ -83,6 +87,8 @@ Strict YAML subset the built-in reader must accept: block mappings with 2-space 
 ```yaml
 mission:
   goal: "Add a README that describes quickship"
+  requirements:
+    - REQ-001
   deliverables:
     - README.md
 success_criteria:
@@ -107,7 +113,7 @@ permissions:
 ambiguity_policy: choose-default-and-record
 ```
 
-brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list), `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
+brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list). Optional: `mission.requirements` (list of stable `REQ-xxx` identifiers) and `mission.base` (branch name). Required elsewhere: `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
 
 
 `validate` writes `brief.json`. Under the v0.3 controller a brief change is a mission boundary only through the controller: after a verified `DONE`, a brief with a new goal archives the finished run and starts fresh; a change to the `budgets` block alone keeps the same run with the new limits; any other change to an active or unfinished run is refused until the operator runs `bash scripts/run.sh --archive`. Archiving moves the run's documents and ledgers to `docs/runs/` and clears the gitignored runtime state (controller state, session, counters, flags, transcript record).
