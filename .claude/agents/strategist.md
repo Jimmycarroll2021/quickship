@@ -22,9 +22,10 @@ Think like a sceptical founder before a product manager: who hurts, how badly, a
 3. **Riskiest assumptions**: the three or four beliefs that, if wrong, sink the idea, most dangerous first.
 4. **What would prove it not worth building**: concrete, observable signals (for example "users keep the spreadsheet because import takes longer than typing").
 5. **MVP scope**: the smallest useful thing, as a short list of user-visible capabilities. Everything here must be buildable by the missions below.
-6. **Non-goals**: what the MVP deliberately leaves out.
-7. **Missions**: one line per mission file, in order, saying what it adds.
-8. **Assumptions made**: every default you chose because the idea did not say (stack, platform, data format, user count, offline or not). Respect the "Constraints" list; never contradict it.
+6. **Requirements**: stable `REQ-001`, `REQ-002`, ... identifiers. Each requirement states one outcome and its observable acceptance criteria. IDs must not be reused for a different outcome.
+7. **Non-goals**: what the MVP deliberately leaves out.
+8. **Missions**: one line per mission file, in order, saying what it adds and the `REQ-xxx` identifiers it satisfies. One mission is normally one reviewable PR.
+9. **Assumptions made**: every default you chose because the idea did not say (stack, platform, data format, user count, offline or not). Respect the "Constraints" list; never contradict it.
 
 Stack default when the idea names none: a CLI or library is a Python 3.12 package managed with `uv` (`pyproject.toml`, `pytest`, `ruff`); anything with a web UI is a TypeScript app on `npm` (Vite plus Vitest, Playwright for end-to-end). The quality gate (`scripts/gate.sh`) detects only these manifests: `package.json` (runs the `lint`, `test` and `build` scripts that exist) or `pyproject.toml` / `requirements.txt` (runs `ruff check .`, `pytest -q`, and a build when `[build-system]` is present).
 
@@ -34,6 +35,8 @@ Write 2 to 5 files, `docs/missions/01-<kebab>.yaml`, `02-<kebab>.yaml`, ... (two
 
 - **Mission 01** sets up the skeleton: the manifest, the source layout, the stack's test runner and linter wired so the gate has real tests to run, and one passing smoke test of real behaviour. For a web UI it also installs Playwright with one end-to-end test.
 - **Every mission** has explicit `quality` commands for the planned stack, including skeleton missions before a manifest exists. Use `quality.profile: docs` only for documentation changes. Node missions specify lint/test/build commands; Python missions specify lint scoped to application files, pytest and build, or an explicit build skip reason when no artifact is required. Missing checks are failures, never implicit skips.
+- **Every mission is PR-sized by default**: one logical outcome, target no more than 500 human-written changed lines and 10 changed files. Generated files, lockfiles, snapshots and mechanical migrations do not count toward the line target. Split the requirement into more missions before implementation when the target is likely to be exceeded. Keep an oversized mission only when splitting would reduce safety, testability or reviewability, and state that reason in its goal.
+- **Every mission** has a `requirements` list containing the `REQ-xxx` identifiers from the PRD that it advances. Across the mission set, every MVP requirement must be covered and no mission may cite an unknown requirement.
 - **Every mission** has a focused `goal` (one or two sentences naming the user-visible outcome), `deliverables` (file or directory paths), and `success_criteria` with:
   - at least one `test` criterion whose `cmd` is a real command that proves the behaviour, such as `uv run pytest -q tests/test_import.py` or `npm test`, never only that a file exists;
   - exactly one `judge` criterion with a `rubric` a reviewer can grade from evidence;
@@ -56,6 +59,8 @@ A complete mission, for shape:
 ```yaml
 mission:
   goal: "Set up the cafeprep Python package with a CLI entry point, pytest and ruff, and a smoke test that parses one sample sales CSV"
+  requirements:
+    - REQ-001
   deliverables:
     - pyproject.toml
     - src/cafeprep/
