@@ -202,9 +202,9 @@ def _pr_criterion_line(criterion):
     return "judge: " + criterion["rubric"].replace("\n", " ").strip()
 
 
-def pr_scope(root, base, head):
+def pr_scope(root, base, head, command=run):
     """Return raw Git diff size. Generated/binary files are not guessed as human-written."""
-    out = run(["git", "diff", "--numstat", f"{base}...{head}"], root)
+    out = command(["git", "diff", "--numstat", f"{base}...{head}"], root)
     files = lines = binary = 0
     for row in out.splitlines():
         parts = row.split("\t", 2)
@@ -332,7 +332,7 @@ def publish(root, config, branch, head):
         raise ValueError("multiple matching PRs; refusing duplicate publication")
     if not prs:
         body = runtime.state() / "pr-body.md"
-        scope = pr_scope(root, base, head)
+        scope = pr_scope(root, base, head, command)
         runtime.atomic(body, render_pr_body(brief, branch, head, scope))
         command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
              "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
