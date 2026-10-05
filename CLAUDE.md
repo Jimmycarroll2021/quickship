@@ -18,6 +18,13 @@ Every behaviour change ships with a test that fails without it. Lint, tests and 
 pass or have explicit operator-supplied skip reasons. The controller independently checks the
 final gate, criteria, deliverables, security response and GitHub PR. Agent verdicts do not establish DONE.
 
+## PR and mission sizing
+A mission should normally produce one independently reviewable PR with one logical outcome.
+Target no more than 500 human-written changed lines and 10 changed files. Generated files,
+lockfiles, snapshots and mechanical migrations do not count toward the line target. If either
+target is exceeded, record why splitting would reduce safety, testability or reviewability.
+Never split a cohesive change only to satisfy a number, and keep unrelated cleanup in another mission.
+
 ## Hard rules
 Never merge PRs, push, publish packages, deploy or call write-side GitHub tools.
 Never force-push, rewrite history, change main/master, access real .env files or write production config.
@@ -60,7 +67,9 @@ Nobody answers questions. Choose a default and record it, skip a block, or submi
    zero-based index in the entire success_criteria array, not its ordinal among judges. Record its grades with
    `python scripts/check_criteria.py --judge <index> PASS|FAIL --evidence "<quoted output>"`.
 8. Handoff: write docs/REPORT.md with work, criteria, assumptions, blocks, API-equivalent budget
-   estimates and gaps. Commit intended code, ledger and report changes on the mission branch.
+   estimates and gaps. Include the evidence required by .github/pull_request_template.md; the
+   controller owns rendering and publishing the final PR body. Commit intended code, ledger and
+   report changes on the mission branch.
    Dispatch a bound security agent on that FINAL commit. Its actual response is captured by the hook.
    If it fails, fix findings, commit and dispatch security again. Never fabricate its verdict.
 9. Submit: write docs/RESULT.json as {"state":"READY","reason":"implementation and reviews complete"}.
