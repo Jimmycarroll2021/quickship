@@ -1,3 +1,26 @@
+## Traceability
+
+**Mission:** `<mission-branch>`
+
+**Requirements:**
+- `<REQ-xxx>`
+
+<!-- Use stable requirement IDs from docs/PRD.md when applicable. -->
+
+
+## Scope
+
+**Reviewable changed lines:** `<reviewable-lines>`
+**Files changed:** `<file-count>`
+
+- [ ] One logical outcome
+- [ ] Within the normal ≤500 reviewable lines / ≤10 files target
+
+If outside the target:
+
+<!-- Explain why the change cannot reasonably be split without reducing safety, testability or reviewability. -->
+
+
 ## Problem
 
 <!-- What failed, was missing, or needed to change?
