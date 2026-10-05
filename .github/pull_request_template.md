@@ -1,3 +1,29 @@
+## Traceability
+
+**Mission:** `mission/<slug>`
+
+**Requirements:**
+- `REQ-xxx`
+
+**Acceptance criteria satisfied:**
+- [ ] AC / criterion:
+- [ ] AC / criterion:
+
+
+## Scope
+
+**Human-written changed lines:** `<n>`
+**Files changed:** `<n>`
+
+- [ ] One logical outcome
+- [ ] Within the normal ≤500 human-written lines / ≤10 files target
+
+If outside the target:
+
+<!-- Explain why splitting would reduce safety, testability or reviewability.
+Generated files, lockfiles, snapshots and mechanical migrations do not count toward the line target. -->
+
+
 ## Problem
 
 <!-- What failed, was missing, or needed to change?
