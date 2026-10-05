@@ -34,6 +34,11 @@ Each step has a unique ID; subagents bind with `python scripts/ledger.py step-bi
 The guard binds the hook's agent_id to that registered step before allowing owned-file writes. The legacy
 current_step file is a compatibility view only, never the authority for schema-3 hooks.
 Publishing reservations are run-wide, persisted before external calls, and reconciled against GitHub on resume.
+When creating a PR, the controller renders the PR body from the frozen brief, final commit and raw Git
+diff using the same evidence structure as `.github/pull_request_template.md`. It includes mission and
+requirement traceability, verified success criteria, raw changed-line/file counts, final-commit evidence,
+and publication state. It never marks GitHub CI or human review complete at creation time; those remain
+unchecked until GitHub and the operator establish them.
 PRD requirements use stable `REQ-xxx` identifiers; mission briefs may carry those IDs in
 `mission.requirements` so the controller can preserve requirement-to-mission-to-PR traceability.
 A mission is normally one reviewable PR, targeting no more than 500 human-written changed lines
