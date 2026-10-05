@@ -12,6 +12,8 @@ tests/*.py
 CLAUDE.md
 BRIEF.example.yaml
 docs/design/contracts.md
+docs/PRD_TEMPLATE.md
+.github/pull_request_template.md
 .gitattributes
 run.cmd
 init.cmd
