@@ -21,16 +21,19 @@ Think like a sceptical founder before a product manager: who hurts, how badly, a
 2. **User and pain**: who the user is, the painful job they are trying to do, what they use today instead, and why they would switch.
 3. **Riskiest assumptions**: the three or four beliefs that, if wrong, sink the idea, most dangerous first.
 4. **What would prove it not worth building**: concrete, observable signals (for example "users keep the spreadsheet because import takes longer than typing").
-5. **MVP scope**: the smallest useful thing, as a short list of user-visible capabilities. Everything here must be buildable by the missions below.
+5. **MVP scope**: the smallest useful thing, as a short list of user-visible capabilities. Give each capability a stable requirement ID (`REQ-001`, `REQ-002`, ...). Everything here must be buildable by the missions below.
 6. **Non-goals**: what the MVP deliberately leaves out.
-7. **Missions**: one line per mission file, in order, saying what it adds.
-8. **Assumptions made**: every default you chose because the idea did not say (stack, platform, data format, user count, offline or not). Respect the "Constraints" list; never contradict it.
+7. **Missions**: one line per mission file, in order, saying what it adds and which `REQ-xxx` IDs it satisfies.
+8. **Delivery slicing**: explain any requirement split across missions and any mission expected to exceed the normal PR-size target.
+9. **Assumptions made**: every default you chose because the idea did not say (stack, platform, data format, user count, offline or not). Respect the "Constraints" list; never contradict it.
 
 Stack default when the idea names none: a CLI or library is a Python 3.12 package managed with `uv` (`pyproject.toml`, `pytest`, `ruff`); anything with a web UI is a TypeScript app on `npm` (Vite plus Vitest, Playwright for end-to-end). The quality gate (`scripts/gate.sh`) detects only these manifests: `package.json` (runs the `lint`, `test` and `build` scripts that exist) or `pyproject.toml` / `requirements.txt` (runs `ruff check .`, `pytest -q`, and a build when `[build-system]` is present).
 
 ## Step 3: write the missions
 
 Write 2 to 5 files, `docs/missions/01-<kebab>.yaml`, `02-<kebab>.yaml`, ... (two-digit number, kebab-case name of at most 24 characters). They run in that order; mission N starts from mission N-1's branch, so each mission assumes everything before it exists and never redoes it. Together they deliver the MVP scope and nothing more.
+
+Treat each mission as one independently reviewable PR. Prefer one logical outcome, at most 500 reviewable human-written changed lines and at most 10 changed files. Generated files, lockfiles and snapshots do not count towards the line target. Split a large requirement into multiple chained missions before implementation when each slice can independently pass its tests and gate. Do not create artificial slices that cannot be safely reviewed, tested or reverted on their own. If a mission is expected to exceed either target, explain why in the PRD's **Delivery slicing** section.
 
 - **Mission 01** sets up the skeleton: the manifest, the source layout, the stack's test runner and linter wired so the gate has real tests to run, and one passing smoke test of real behaviour. For a web UI it also installs Playwright with one end-to-end test.
 - **Every mission** has explicit `quality` commands for the planned stack, including skeleton missions before a manifest exists. Use `quality.profile: docs` only for documentation changes. Node missions specify lint/test/build commands; Python missions specify lint scoped to application files, pytest and build, or an explicit build skip reason when no artifact is required. Missing checks are failures, never implicit skips.

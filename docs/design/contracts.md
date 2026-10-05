@@ -10,6 +10,12 @@ Actual security responses and reviewer judge grades are captured by SubagentStop
 Judge evidence must match the frozen rubric and the current deliverable hashes; security must match the commit at binding and completion.
 DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
 security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
+Before creating a new PR, the controller renders `.github/pull_request_template.md` into
+`.claude/state/pr-body.md`, fills the mission branch, final commit, reviewable diff size and controller-
+verified evidence, and embeds `docs/REPORT.md`. Reviewable line counts exclude known lockfiles, snapshots
+and generated directories; the 500-line/10-file target is advisory, not a publication block. CI and human
+review checkboxes remain unresolved until GitHub runs and the operator reviews the PR. Installed copies
+include the PR template through `scripts/manifest.txt`.
 Exit codes: 0 verified DONE; 2 invalid preflight/brief; 3 partial/safe stop; 4 HALT; 5 controller failure.
 `docs/COMPLETION.json` carries `retryable` (boolean): true only when a plain rerun can resume the same run, that is
 the lead session crashed or failed (`SAFE_STOP`) or an exception interrupted the controller (`ERROR`).

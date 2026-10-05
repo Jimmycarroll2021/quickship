@@ -18,6 +18,15 @@ Every behaviour change ships with a test that fails without it. Lint, tests and 
 pass or have explicit operator-supplied skip reasons. The controller independently checks the
 final gate, criteria, deliverables, security response and GitHub PR. Agent verdicts do not establish DONE.
 
+## PR sizing and evidence
+A mission should normally produce one independently reviewable PR with one logical outcome.
+Target no more than 500 reviewable changed lines and 10 changed files. Generated files, lockfiles,
+snapshots and other mechanically produced artifacts do not count towards the line target. If a mission
+must exceed either target, record why splitting it would reduce safety, testability or reviewability;
+do not split a cohesive change merely to satisfy a number. Unrelated cleanup belongs in another mission.
+The lead must provide the evidence required by `.github/pull_request_template.md` in `docs/REPORT.md`.
+The controller owns rendering and publishing the final PR body; the human owns the merge decision.
+
 ## Hard rules
 Never merge PRs, push, publish packages, deploy or call write-side GitHub tools.
 Never force-push, rewrite history, change main/master, access real .env files or write production config.
