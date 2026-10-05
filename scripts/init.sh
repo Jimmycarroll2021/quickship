@@ -65,7 +65,7 @@ for f in "${files[@]}"; do
   [ "${TSHA[$f]}" = "${SSHA[$f]}" ] && continue
   untouched=0; [ "$upgrade" = 1 ] && ! grep -qxF "$f" "$T/.quickship/unmanaged" && [ "${TSHA[$f]}" = "${REC[$f]:-}" ] && untouched=1
   if [ "$f" = CLAUDE.md ] && [ "$untouched" = 0 ]; then
-    echo "notice: CLAUDE.md exists; merge the \"Hard rules\" and \"Lead loop\" sections from $SRC/CLAUDE.md"; skipped=$((skipped+1))
+    echo "notice: CLAUDE.md exists; merge the \"PR and mission sizing\", \"Hard rules\" and \"Lead loop\" sections from $SRC/CLAUDE.md"; skipped=$((skipped+1))
   elif [ "$force" = 1 ]; then install "$f" && echo "overwrite: $f"; changed=$((changed+1))
   elif [ "$untouched" = 1 ]; then install "$f" && echo "upgrade: $f"; changed=$((changed+1))
   else echo "skip (modified): $f"; skipped=$((skipped+1)); fi
