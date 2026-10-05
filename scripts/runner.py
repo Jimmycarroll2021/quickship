@@ -191,6 +191,115 @@ def verify_criteria(root, brief, config):
     return data
 
 
+def _pr_criterion_line(criterion):
+    kind = criterion["kind"]
+    if kind == "test":
+        return f"test: `{criterion['cmd']}` exits {criterion.get('expect', 0)}"
+    if kind == "file":
+        return "file: `" + criterion["path"] + "`"
+    if kind == "grep":
+        return "grep: `" + criterion["pattern"] + "` in `" + criterion["path"] + "`"
+    return "judge: " + criterion["rubric"].replace("\n", " ").strip()
+
+
+def pr_scope(root, base, head):
+    """Return raw Git diff size. Generated/binary files are not guessed as human-written."""
+    out = run(["git", "diff", "--numstat", f"{base}...{head}"], root)
+    files = lines = binary = 0
+    for row in out.splitlines():
+        parts = row.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        files += 1
+        if parts[0].isdigit() and parts[1].isdigit():
+            lines += int(parts[0]) + int(parts[1])
+        else:
+            binary += 1
+    return {"files": files, "lines": lines, "binary": binary}
+
+
+def render_pr_body(brief, branch, head, scope):
+    """Render the controller-owned PR body using the repository PR-template contract."""
+    requirements = brief["mission"].get("requirements", [])
+    req_lines = "\n".join("- `" + req + "`" for req in requirements) or "- Not supplied"
+    criteria = "\n".join("- [x] " + _pr_criterion_line(c) for c in brief["success_criteria"])
+    binary_note = f"; {scope['binary']} binary file(s) excluded from line count" if scope["binary"] else ""
+    return f"""## Traceability
+
+**Mission:** `{branch}`
+
+**Requirements:**
+{req_lines}
+
+**Acceptance criteria satisfied:**
+{criteria}
+
+
+## Scope
+
+**Raw changed lines:** `{scope['lines']}`
+**Files changed:** `{scope['files']}`
+
+Raw Git diff size includes generated files, lockfiles, snapshots and mechanical migrations{binary_note}.
+The ≤500 human-written lines / ≤10 files target is a planning and review policy; the controller does not guess which diff lines are generated.
+
+- [x] One mission / one logical outcome
+- [ ] Reviewer confirmed the human-written diff is within target, or the recorded exception is justified
+
+
+## Problem
+
+Mission goal: {brief['mission']['goal']}
+
+
+## Change
+
+Implements the mission above on its isolated mission branch.
+
+
+## Regression evidence
+
+- [x] Controller independently verified the final gate
+- [x] All success criteria passed
+- [x] Required deliverables are present and tracked
+- [x] Security review passed on the final commit
+
+**Final commit:** `{head}`
+
+
+## Validation
+
+The controller verified local acceptance before publication. GitHub CI starts from this published PR and must be green on the latest PR commit before merge.
+
+
+## Contract / operational impact
+
+See the committed diff and `docs/REPORT.md` for contract, operational and acceptance details.
+
+
+## Security and evidence
+
+Evidence remains in committed project artefacts; private transcripts, runtime databases and credentials are not copied into this PR body.
+
+
+## Risks and remaining work
+
+See `docs/REPORT.md` for known limitations, blocked work and live-acceptance gaps.
+
+
+## Publication status
+
+- [x] Controller independently verified the final commit
+- [x] PR represents the controller-published result
+- [ ] Latest CI is green
+- [ ] Review conversations resolved
+
+**Live acceptance:** See `docs/REPORT.md`
+
+An open PR is not evidence of release readiness.
+"""
+
+
 def publish(root, config, branch, head):
     def command(args, root, timeout=30):
         if time.time() >= config["deadline"]:
@@ -223,8 +332,8 @@ def publish(root, config, branch, head):
         raise ValueError("multiple matching PRs; refusing duplicate publication")
     if not prs:
         body = runtime.state() / "pr-body.md"
-        runtime.atomic(body, "Mission: " + brief["mission"]["goal"] +
-                       "\n\nThe controller independently verified the final gate, success criteria, deliverables and security review.\n")
+        scope = pr_scope(root, base, head)
+        runtime.atomic(body, render_pr_body(brief, branch, head, scope))
         command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
              "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
         prs = json.loads(command(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
