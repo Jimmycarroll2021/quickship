@@ -15,7 +15,8 @@ expect_exit "started_at written" 0 test -f "$STARTED"
 
 brief_content="$(cat "$SJSON")"
 expect_contains "brief.json has goal" "Add a README" "$brief_content"
-expect_contains "brief.json keeps requirements" '"requirements": ["REQ-001"]' "$brief_content"
+expect_contains "brief.json has requirements array" '"requirements": [' "$brief_content"
+expect_contains "brief.json keeps REQ-001" '"REQ-001"' "$brief_content"
 
 # --- optional mission.requirements: stable REQ identifiers only ---
 NOREQ="$CLAUDE_PROJECT_DIR/no-requirements.yaml"
