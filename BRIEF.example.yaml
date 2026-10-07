@@ -1,6 +1,9 @@
 # The mission: what the lead is trying to accomplish and the files it must produce.
 mission:
   goal: "Add a README that describes quickship"
+  # Optional traceability back to stable requirement IDs in docs/PRD.md.
+  requirements:
+    - REQ-001
   deliverables:
     - README.md
 # How the lead knows it is done: each item is checked by check_criteria.py.

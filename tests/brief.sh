@@ -15,6 +15,17 @@ expect_exit "started_at written" 0 test -f "$STARTED"
 
 brief_content="$(cat "$SJSON")"
 expect_contains "brief.json has goal" "Add a README" "$brief_content"
+expect_contains "brief.json has requirements array" '"requirements": [' "$brief_content"
+expect_contains "brief.json keeps REQ-001" '"REQ-001"' "$brief_content"
+
+# --- optional mission.requirements: stable REQ identifiers only ---
+NOREQ="$CLAUDE_PROJECT_DIR/no-requirements.yaml"
+sed '/^  requirements:/,+1d' "$BRIEF" > "$NOREQ"
+expect_exit "requirements omitted: validates" 0 py check "$NOREQ"
+BADREQ="$CLAUDE_PROJECT_DIR/bad-requirements.yaml"
+sed 's/REQ-001/US-001/' "$BRIEF" > "$BADREQ"
+expect_exit "bad requirement id -> exit 2" 2 py check "$BADREQ"
+expect_contains "bad requirement error names mission.requirements" "mission.requirements" "$OUT"
 
 ncrit="$(grep -o '"kind":' "$SJSON" | wc -l | tr -d ' ')"
 expect_contains "brief.json has 4 criteria" "4" "$ncrit"

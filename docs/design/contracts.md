@@ -11,8 +11,8 @@ Judge evidence must match the frozen rubric and the current deliverable hashes; 
 DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
 security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
 Before creating a new PR, the controller renders `.github/pull_request_template.md` into
-`.claude/state/pr-body.md`, fills the mission branch, final commit, reviewable diff size and controller-
-verified evidence, and embeds `docs/REPORT.md`. Reviewable line counts exclude known lockfiles, snapshots
+`.claude/state/pr-body.md`, fills the mission branch, the brief's `mission.requirements` identifiers, final
+commit, reviewable diff size and controller-verified evidence, and embeds `docs/REPORT.md`. Reviewable line counts exclude known lockfiles, snapshots
 and generated directories; the 500-line/10-file target is advisory, not a publication block. CI and human
 review checkboxes remain unresolved until GitHub runs and the operator reviews the PR. Installed copies
 include the PR template through `scripts/manifest.txt`.
@@ -113,7 +113,7 @@ permissions:
 ambiguity_policy: choose-default-and-record
 ```
 
-brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list), `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
+brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list). Optional: `mission.requirements` (list of stable `REQ-xxx` identifiers from `docs/PRD.md`, rendered into the PR's Traceability section) and `mission.base` (branch name, set by `scripts/program.sh`). Required elsewhere: `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
 
 
 `validate` writes `brief.json`. Under the v0.3 controller a brief change is a mission boundary only through the controller: after a verified `DONE`, a brief with a new goal archives the finished run and starts fresh; a change to the `budgets` block alone keeps the same run with the new limits; any other change to an active or unfinished run is refused until the operator runs `bash scripts/run.sh --archive`. Archiving moves the run's documents and ledgers to `docs/runs/` and clears the gitignored runtime state (controller state, session, counters, flags, transcript record).

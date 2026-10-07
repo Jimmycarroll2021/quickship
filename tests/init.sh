@@ -67,7 +67,7 @@ grep -q "# local edit" "$t/scripts/diffbase.sh" && ok "modified file survives up
 # --- CLAUDE.md is never overwritten ---
 echo "# my own rules" > "$t/CLAUDE.md"
 expect_exit "run with differing CLAUDE.md exits 0" 0 bash "$INIT" "$t" --force
-expect_contains "CLAUDE.md notice printed" 'notice: CLAUDE.md exists; merge the "Hard rules" and "Lead loop" sections' "$OUT"
+expect_contains "CLAUDE.md notice printed" 'notice: CLAUDE.md exists; merge the "PR sizing and evidence", "Hard rules" and "Lead loop" sections' "$OUT"
 [ "$(cat "$t/CLAUDE.md")" = "# my own rules" ] && ok "CLAUDE.md left alone even with --force" || bad "CLAUDE.md overwritten"
 
 # --- refusals and wrappers ---

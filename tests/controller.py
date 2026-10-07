@@ -374,6 +374,18 @@ quality:
         self.assertIn('Verified evidence.',body)
         self.assertIn('uv.lock',body)
         self.assertIn('- [ ] `ci-required` passed',body)
+        self.assertIn('- Not declared in the mission brief',body)
+        self.assertNotIn('`<REQ-xxx>`',body)
+
+    def test_pr_body_lists_brief_requirements(self):
+        (self.root/'.github').mkdir(exist_ok=True)
+        shutil.copy(Path(__file__).resolve().parents[1]/'.github/pull_request_template.md',
+                    self.root/'.github/pull_request_template.md')
+        self.b['mission']['requirements']=['REQ-007','REQ-012']
+        with patch.object(runner,'pr_scope',return_value={'reviewable_lines':1,'files':1,'excluded':[]}):
+            body=runner.render_pr_body(self.root,self.b,'mission/test','main','abc123')
+        self.assertIn('**Requirements:**\n- `REQ-007`\n- `REQ-012`\n',body)
+        self.assertNotIn('Not declared in the mission brief',body)
 
     def test_publication_reconciles_existing_pr(self):
         self.b['permissions']['irreversible']['allow']=['git push origin mission/*','gh pr create*']
