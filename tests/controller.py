@@ -26,6 +26,8 @@ class ControllerTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[1]
         shutil.copytree(source/'scripts', self.root/'scripts', ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copytree(source/'.claude/agents', self.root/'.claude/agents')
+        (self.root/'.github').mkdir(exist_ok=True)
+        shutil.copy(source/'.github/pull_request_template.md', self.root/'.github/pull_request_template.md')
         runtime.atomic(self.root/'.claude/settings.json', {'permissions':{'allow':['Bash(git status *)']}, 'hooks':{}})
         self.config['hashes'] = runner.hashes(self.root)
         runtime.atomic(runtime.state()/'controller.json', self.config)
@@ -348,6 +350,31 @@ quality:
         self.assertTrue(any('v0.2 active state' in x for x in info['errors']))
         self.assertEqual((runtime.state()/'session_id').read_text(),'old')
 
+    def test_pr_scope_excludes_known_generated_files(self):
+        numstat='10\t2\tsrc/app.py\n500\t0\tpackage-lock.json\n1\t1\ttests/test_app.py'
+        with patch.object(runner,'run',return_value=numstat):
+            scope=runner.pr_scope(self.root,'main','abc')
+        self.assertEqual(scope['reviewable_lines'],14)
+        self.assertEqual(scope['files'],3)
+        self.assertEqual(scope['excluded'],['package-lock.json'])
+
+    def test_pr_body_uses_repo_template_and_controller_evidence(self):
+        (self.root/'.github').mkdir(exist_ok=True)
+        shutil.copy(Path(__file__).resolve().parents[1]/'.github/pull_request_template.md',
+                    self.root/'.github/pull_request_template.md')
+        runtime.atomic(self.root/'docs/REPORT.md','# Lead report\n\nVerified evidence.\n')
+        with patch.object(runner,'pr_scope',return_value={'reviewable_lines':123,'files':7,'excluded':['uv.lock']}):
+            body=runner.render_pr_body(self.root,self.b,'mission/test','main','abc123')
+        self.assertIn('**Mission:** `mission/test`',body)
+        self.assertIn('**Reviewable changed lines:** `123`',body)
+        self.assertIn('**Files changed:** `7`',body)
+        self.assertIn('Commit: `abc123`',body)
+        self.assertIn('- [x] `bash scripts/gate.sh` passed',body)
+        self.assertIn('- [x] Controller/security verification completed',body)
+        self.assertIn('Verified evidence.',body)
+        self.assertIn('uv.lock',body)
+        self.assertIn('- [ ] `ci-required` passed',body)
+
     def test_publication_reconciles_existing_pr(self):
         self.b['permissions']['irreversible']['allow']=['git push origin mission/*','gh pr create*']
         pub={'url':'https://github.com/example/test/pull/1','headRefOid':'abc','headRefName':'mission/test','baseRefName':'main'}
@@ -410,7 +437,13 @@ quality:
                 self.assertEqual(result['state'],'SAFE_STOP')
                 self.assertFalse(result['retryable'])
 
+    def stage_pr_template(self):
+        (self.root/'.github').mkdir(exist_ok=True)
+        shutil.copy(Path(__file__).resolve().parents[1]/'.github/pull_request_template.md',
+                    self.root/'.github/pull_request_template.md')
+
     def test_publication_rechecks_cancellation_before_push_and_pr_create(self):
+        self.stage_pr_template()
         self.b['permissions']['irreversible']['default']='allow'
         self.b['mission']['base']='main'
         for stop_after in ('start', 'remote', 'pr-list'):
@@ -438,6 +471,7 @@ quality:
         provider.assert_not_called()
 
     def test_cancellation_after_publication_mutation_preserves_receipt(self):
+        self.stage_pr_template()
         self.b['permissions']['irreversible']['default']='allow'
         self.b['mission']['base']='main'
         for stage in ('push', 'pr-create'):
@@ -454,6 +488,7 @@ quality:
                         runtime.atomic(runtime.state()/'cancel','stop')
                         return ''
                     if args[:3]==['gh','pr','list']: return '[]'
+                    if args[:3]==['git','diff','--numstat']: return '1\t1\ta.py'
                     if args[:3]==['gh','pr','create']:
                         runtime.atomic(runtime.state()/'cancel','stop')
                         return 'https://github.com/example/test/pull/1'
@@ -465,7 +500,7 @@ quality:
                 self.assertEqual(receipt['head'],'abc')
                 self.assertEqual(receipt['status'],'pushed' if stage=='push' else 'pr-created')
                 if stage=='pr-create': self.assertEqual(receipt['url'],'https://github.com/example/test/pull/1')
-                self.assertEqual(len(calls),2 if stage=='push' else 3)
+                self.assertEqual(len(calls),2 if stage=='push' else 4)  # ls-remote, pr list, diff for the body, pr create
 
     def test_cancelled_resume_reports_previous_publication_receipt(self):
         receipt={'status':'pushed','branch':'mission/test','base':'main','head':'saved-commit'}

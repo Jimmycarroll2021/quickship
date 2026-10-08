@@ -206,6 +206,70 @@ def verify_criteria(root, brief, config):
     return data
 
 
+
+def pr_scope(root, base, head, command=None):
+    """Return reviewable changed lines, total changed files, and excluded generated paths."""
+    out = (command or run)(["git", "diff", "--numstat", base + "..." + head], root)
+    lines = 0
+    files = 0
+    excluded = []
+    lockfiles = {"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "poetry.lock", "cargo.lock"}
+    for row in out.splitlines():
+        parts = row.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        added, deleted, path = parts
+        files += 1
+        lower = path.lower().replace("\\", "/")
+        name = lower.rsplit("/", 1)[-1]
+        generated = (name in lockfiles or lower.endswith(".snap") or "/generated/" in "/" + lower
+                     or lower.startswith("generated/"))
+        if generated or not added.isdigit() or not deleted.isdigit():
+            excluded.append(path)
+            continue
+        lines += int(added) + int(deleted)
+    return {"reviewable_lines": lines, "files": files, "excluded": excluded}
+
+
+def render_pr_body(root, brief, branch, base, head, command=None):
+    """Render the repository PR template with controller-verified mission evidence.
+
+    `command` runs the diff that sizes the PR; publish passes its deadline- and cancellation-checking wrapper."""
+    template = root / ".github/pull_request_template.md"
+    if not template.is_file():
+        raise ValueError("missing .github/pull_request_template.md")
+    body = template.read_text(encoding="utf-8")
+    scope = pr_scope(root, base, head, command)
+    body = body.replace("`<mission-branch>`", "`" + branch + "`")
+    body = body.replace("`<reviewable-lines>`", "`" + str(scope["reviewable_lines"]) + "`")
+    body = body.replace("`<file-count>`", "`" + str(scope["files"]) + "`")
+    body = body.replace("Commit: `<SHA>`", "Commit: `" + head + "`")
+    body = body.replace("- `<REQ-xxx>`",
+                        "- Not declared in the mission brief; use the stable `REQ-xxx` mapping in `docs/PRD.md` when present.")
+    problem = "<!-- What failed, was missing, or needed to change?\nDescribe how the problem can be reproduced or observed. -->"
+    body = body.replace(problem, "Mission goal: " + brief["mission"]["goal"], 1)
+    change = "<!-- What behaviour does this PR introduce or change?\nExplain the outcome, not just the files changed. -->"
+    body = body.replace(change, "Controller-verified implementation for this mission. See the evidence below.", 1)
+    body = body.replace("- [ ] `bash scripts/gate.sh` passed", "- [x] `bash scripts/gate.sh` passed", 1)
+    body = body.replace("<gate result / relevant summary>",
+                        "PASS — the controller reran the final gate before publication.", 1)
+    body = body.replace("- [ ] Controller/security verification completed",
+                        "- [x] Controller/security verification completed", 1)
+    body = body.replace("- [ ] Controller independently verified the final commit",
+                        "- [x] Controller independently verified the final commit", 1)
+    body = body.replace("- [ ] PR represents the controller-published result",
+                        "- [x] PR represents the controller-published result", 1)
+    report = root / "docs/REPORT.md"
+    evidence = report.read_text(encoding="utf-8").strip() if report.is_file() else "No report was available."
+    scope_note = ""
+    if scope["excluded"]:
+        scope_note = "\n\nKnown generated/lock/snapshot paths excluded from the reviewable-line count: " + ", ".join(scope["excluded"])
+    marker = "\n\n## Risks and remaining work\n"
+    controller_evidence = "\n\n## Controller evidence\n\n" + evidence + scope_note
+    if marker in body:
+        body = body.replace(marker, controller_evidence + marker, 1)
+    return body.rstrip() + "\n"
+
 def publish(root, config, branch, head):
     check_cancellation()
     def command(args, root, timeout=30):
@@ -243,8 +307,7 @@ def publish(root, config, branch, head):
         raise ValueError("multiple matching PRs; refusing duplicate publication")
     if not prs:
         body = runtime.state() / "pr-body.md"
-        runtime.atomic(body, "Mission: " + brief["mission"]["goal"] +
-                       "\n\nThe controller independently verified the final gate, success criteria, deliverables and security review.\n")
+        runtime.atomic(body, render_pr_body(root, brief, branch, base, head, command))
         created = command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
                           "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
         record["status"] = "pr-created"
