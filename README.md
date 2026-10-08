@@ -84,7 +84,8 @@ $EDITOR BRIEF.yaml                               # init.sh seeded it from the ex
 git status --short                               # commit the harness and the brief, not your secrets
 git add BRIEF.yaml .claude/agents .claude/rules .claude/settings.json scripts tests .quickship
 git add CLAUDE.md VERSION .gitattributes .gitignore run.cmd init.cmd idea.cmd program.cmd
-git add BRIEF.example.yaml IDEA.example.md docs/design/contracts.md docs/decisions.md
+git add BRIEF.example.yaml IDEA.example.md docs/design/contracts.md docs/PRD_TEMPLATE.md docs/decisions.md
+git add .github/pull_request_template.md
 git commit -m "Install quickship and mission brief"
 python scripts/preflight.py                      # checks auth and setup, no model calls
 bash scripts/run.sh                              # walk away
@@ -367,6 +368,7 @@ More in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 | `.claude/agents/` | Strategist, planner, worker, researcher, reviewer, security and overseer subagents. |
 | `tests/` | Self-tests with no model calls. `bash tests/run.sh` runs them all. |
 | `docs/design/contracts.md` | The contract for every file, script and hook. |
+| `docs/PRD_TEMPLATE.md`, `.github/pull_request_template.md` | The PRD shape the strategist fills in, and the PR body the controller renders. |
 | `docs/RUNBOOK.md` | Operating a run: state, resume, cancel, archive, budgets, failures. |
 | `docs/RELEASE-EVIDENCE.md` | What the current release was tested on, and what it wasn't. |
 | `examples/briefs/` | Briefs from real runs. |
