@@ -193,7 +193,7 @@ Every denial appends `<utc ts>	DENY	<tool>	<reason>	<arg>` (five tab-separated f
 
 ## Install and upgrade
 
-`scripts/init.sh <target-dir> [--force] [--upgrade]` installs the files listed in `scripts/manifest.txt` into a project (git-initialising it if needed), appends the three ignore lines, creates `docs/decisions.md` and `BRIEF.yaml` when absent, and records `.quickship/VERSION` and `.quickship/manifest.sha256`. A target file that differs from the source is skipped unless `--force`; `--upgrade` replaces only files whose current sha still matches the recorded one. `CLAUDE.md` is never overwritten. `run.cmd` and `init.cmd` are Windows wrappers that locate Git Bash.
+`scripts/init.sh <target-dir> [--force] [--upgrade]` installs the files listed in `scripts/manifest.txt` into a project (git-initialising it if needed), appends the four ignore lines (`.claude/worktrees/`, `.claude/state/`, `work/_untrusted/`, `__pycache__/`), creates `docs/decisions.md` and `BRIEF.yaml` when absent, and records `.quickship/VERSION` and `.quickship/manifest.sha256`. A target file that differs from the source is skipped unless `--force`; `--upgrade` replaces only files whose current sha still matches the recorded one. `CLAUDE.md` is never overwritten. `run.cmd` and `init.cmd` are Windows wrappers that locate Git Bash.
 
 `.quickship/VERSION` also tells `scripts/gate.sh` it is running in an installed copy: it then skips `bash tests/run.sh` (the harness self-tests) with the notice `gate: harness self-tests skipped in an installed copy (QS_SELFTEST=1 runs them)`. `QS_SELFTEST=1` runs them anyway. In the quickship repo itself, where the file is absent, the gate always runs them.
 

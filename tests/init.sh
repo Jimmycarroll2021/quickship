@@ -24,9 +24,13 @@ for f in $(manifest_files "$ROOT"); do [ -f "$t/$f" ] || missing="$missing $f"; 
 [ -d "$t/.git" ] && ok "target is a git repo" || bad "no .git in target"
 [ "$(cat "$t/.quickship/VERSION")" = "$(cat "$ROOT/VERSION")" ] && ok ".quickship/VERSION matches source" || bad ".quickship/VERSION mismatch"
 expect_contains "manifest.sha256 records diffbase" "  scripts/diffbase.sh" "$(cat "$t/.quickship/manifest.sha256")"
-for line in ".claude/worktrees/" ".claude/state/" "work/_untrusted/"; do
+for line in ".claude/worktrees/" ".claude/state/" "work/_untrusted/" "__pycache__/"; do
   grep -qxF -- "$line" "$t/.gitignore" && ok ".gitignore has $line" || bad ".gitignore lacks $line"
 done
+# the harness's own imports write bytecode under scripts/__pycache__; it must not surface as untracked project files
+(cd "$t" && bash scripts/gate.sh >/dev/null 2>&1)   # quality.py imports runtime and policy
+pyc="$(git -C "$t" ls-files --others --exclude-standard | grep -c '\.pyc$')"
+[ "$pyc" = 0 ] && ok "bytecode written by a harness command is ignored" || bad "bytecode surfaces as $pyc untracked .pyc file(s)"
 [ -f "$t/docs/decisions.md" ] && ok "docs/decisions.md created" || bad "docs/decisions.md missing"
 expect_contains "decisions.md has the table header" "| date | task | change | why |" "$(cat "$t/docs/decisions.md")"
 [ -f "$t/BRIEF.yaml" ] && ok "BRIEF.yaml created from example" || bad "BRIEF.yaml missing"

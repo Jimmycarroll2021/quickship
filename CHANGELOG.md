@@ -20,6 +20,11 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
   variable set, which pointed every fixture at the real repo's `.claude/state` and failed the gate on every
   stop in this repo while CI stayed green.
 - `scripts/init.sh` names the "PR sizing and evidence" section among those to merge into an existing CLAUDE.md.
+- `scripts/init.sh` adds `__pycache__/` to the project's `.gitignore`. The harness's own Python imports wrote
+  bytecode under `scripts/__pycache__/` as untracked files, which failed the docs profile and the controller's
+  clean-tree check in any project without a global ignore for it.
+- The README's Quickstart commits every file `init.sh` installs; it had left the PR and PRD templates untracked,
+  which preflight refuses.
 
 ## [0.3.0] - 2026-10-03
 

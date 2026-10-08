@@ -77,7 +77,7 @@ done
 
 # .gitignore entries the harness relies on
 gi="$T/.gitignore"
-for line in ".claude/worktrees/" ".claude/state/" "work/_untrusted/"; do
+for line in ".claude/worktrees/" ".claude/state/" "work/_untrusted/" "__pycache__/"; do
   grep -qxF -- "$line" "$gi" 2>/dev/null && continue
   [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
   echo "$line" >> "$gi"; echo "add: .gitignore <- $line"; changed=$((changed+1))
