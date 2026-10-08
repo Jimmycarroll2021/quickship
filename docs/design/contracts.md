@@ -10,6 +10,12 @@ Actual security responses and reviewer judge grades are captured by SubagentStop
 Judge evidence must match the frozen rubric and the current deliverable hashes; security must match the commit at binding and completion.
 DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
 security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
+Before creating a new PR, the controller renders `.github/pull_request_template.md` into
+`.claude/state/pr-body.md`, fills the mission branch, final commit, reviewable diff size and controller-
+verified evidence, and embeds `docs/REPORT.md`. Reviewable line counts exclude known lockfiles, snapshots
+and generated directories; the 500-line/10-file target is advisory, not a publication block. CI and human
+review checkboxes remain unresolved until GitHub runs and the operator reviews the PR. Installed copies
+include the PR template through `scripts/manifest.txt`.
 Exit codes: 0 verified DONE; 2 invalid preflight/brief; 3 partial/safe stop; 4 HALT; 5 controller failure.
 `docs/COMPLETION.json` carries `retryable` (boolean): true only when a plain rerun can resume the same run, that is
 the lead session crashed or failed (`SAFE_STOP`) or an exception interrupted the controller (`ERROR`).
@@ -166,8 +172,7 @@ A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/l
 
 ## Idempotency
 
-`scripts/hooks/idem.sh` runs on PreToolUse and PostToolUse with matcher `Bash|mcp__.*`. For Bash it matches subcommands starting with `git push`, `git -C <dir> push` or `gh (pr|issue|release) create`; for an MCP tool named `mcp__<server>__(create_pull_request|create_issue|create_release)` the key is sha256 of `<step id>
-<tool name>:<JSON of tool_input head, base, title>` and the ledger `cmd` is `<tool name> head=<head> base=<base>` (this covers cloud sessions, which have no `gh`); every other command or tool → exit 0 immediately. Key = sha256 of `<step id from current_step.json, or "nostep">\n<command with whitespace runs collapsed>`. Ledger `$S/idem.jsonl` lines: `{"key": "...", "step": "s007", "cmd": "...", "status": "pending|done", "exit": 0, "ts": "..."}`. PreToolUse: if a line with this key has `status: done` → exit 2 with stderr `already executed at <ts> (exit <n>); use the recorded result, do not retry`; else append `pending`. PostToolUse: append a `done` line with the exit code from `tool_response` (best effort; 0 if absent).
+`scripts/hooks/idem.sh` runs on PreToolUse and PostToolUse with matcher `Bash|mcp__.*`. For Bash it matches subcommands starting with `git push`, `git -C <dir> push` or `gh (pr|issue|release) create`; for an MCP tool named `mcp__<server>__(create_pull_request|create_issue|create_release)` the key is sha256 of `<step id>\n<tool name>:<JSON of tool_input head, base, title>` and the ledger `cmd` is `<tool name> head=<head> base=<base>` (this covers cloud sessions, which have no `gh`); every other command or tool → exit 0 immediately. Key = sha256 of `<step id from current_step.json, or "nostep">\n<command with whitespace runs collapsed>`. Ledger `$S/idem.jsonl` lines: `{"key": "...", "step": "s007", "cmd": "...", "status": "pending|done", "exit": 0, "ts": "..."}`. PreToolUse: if a line with this key has `status: done` → exit 2 with stderr `already executed at <ts> (exit <n>); use the recorded result, do not retry`; else append `pending`. PostToolUse: append a `done` line with the exit code from `tool_response` (best effort; 0 if absent).
 
 ## Anchoring
 

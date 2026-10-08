@@ -25,3 +25,18 @@ jobs:
           QS_TEST_JOBS: "2"
           PYTHONUTF8: "1"
         run: bash scripts/gate.sh
+
+  ci-required:
+    name: ci-required
+    if: ${{ always() }}
+    needs: self-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all matrix jobs to pass
+        shell: bash
+        run: |
+          if [ "${{ needs.self-tests.result }}" != "success" ]; then
+            echo "self-tests result: ${{ needs.self-tests.result }}"
+            exit 1
+          fi
+          echo "all self-tests passed"
