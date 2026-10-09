@@ -52,6 +52,18 @@ renders them into each PR's Traceability section. -->
 - [ ]
 
 
+## Design language
+
+<!-- UI products only; delete the section otherwise. Decide the look once, here, so workers build to it and the
+UI mission's judge rubric can cite it. Ground it in the product's subject matter, not in a generic default. -->
+
+- Subject and primary job of the interface:
+- Palette (4 to 6 named hex values):
+- Type (one or two families, and the role of each):
+- Layout principle (one sentence):
+- Avoid (two or three defaults that would make this look like any other app):
+
+
 ## Non-goals
 
 -

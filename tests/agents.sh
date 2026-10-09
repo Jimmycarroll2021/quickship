@@ -16,6 +16,13 @@ if [ -f "$S_MD" ]; then ok "security.md exists"; else bad "security.md exists"; 
 expect_contains "security: disallows Write and Edit" "disallowedTools: Write, Edit" "$(grep '^disallowedTools:' "$S_MD" 2>/dev/null)"
 expect_contains "worker: test that fails without it" "test that fails without it" "$(cat "$ROOT/.claude/agents/worker.md")"
 expect_contains "reviewer: behaviour change without a test fails" "without a test" "$(cat "$ROOT/.claude/agents/reviewer.md")"
+# tests are immutable from the agent's side: the worker may not weaken one, the reviewer fails a diff that does
+expect_contains "worker: never weaken an existing test" "Never delete, skip or weaken an existing test" "$(cat "$ROOT/.claude/agents/worker.md")"
+expect_contains "reviewer: weakened test is a FAIL item" "existing test weakened" "$(cat "$ROOT/.claude/agents/reviewer.md")"
+expect_contains "reviewer: a found defect is a FAIL item" "A defect you found is a FAIL item" "$(cat "$ROOT/.claude/agents/reviewer.md")"
+# taste is decided once in the PRD for UI products
+expect_contains "strategist: design language in the PRD" "Design language" "$(cat "$ROOT/.claude/agents/strategist.md")"
+expect_contains "PRD template: design language section" "## Design language" "$(cat "$ROOT/docs/PRD_TEMPLATE.md")"
 # the researcher reads untrusted web content (lethal-trifecta rule): it has no shell by frontmatter, in every mode
 R_MD="$ROOT/.claude/agents/researcher.md"
 case "$(grep '^tools:' "$R_MD")" in *Bash*) bad "researcher: tools has no Bash";; *) ok "researcher: tools has no Bash";; esac

@@ -14,6 +14,16 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
   and git are.
 - `docs/design/lessons.md` records which published harness lessons quickship adopts, already has, or declines,
   and why.
+- Tests are immutable from the agent's side: the worker is told never to delete, skip or weaken an existing test
+  and to return a wrong one as a blocked step; the reviewer fails a diff that weakens one, treats any defect it
+  found as a FAIL item, and probes edge cases rather than the happy path. Lessons from the long-running-agent
+  posts and the quickstart ("it is unacceptable to remove or edit tests").
+- `docs/PRD_TEMPLATE.md` gains a Design language section for UI products (subject, palette, type, layout
+  principle, defaults to avoid), which the strategist fills and the UI mission's judge rubric can cite. Taste is
+  decided once in the spec instead of improvised per task, as the harness design post did by handing the planner
+  the frontend-design skill.
+- The sandbox network allowlist admits Playwright's browser download hosts, without which a UI mission's
+  Playwright criterion could not install a browser inside the sandbox.
 
 ### Changed
 

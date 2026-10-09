@@ -21,7 +21,7 @@ Think like a sceptical founder before a product manager: who hurts, how badly, a
 2. **User and pain**: who the user is, the painful job they are trying to do, what they use today instead, and why they would switch.
 3. **Riskiest assumptions**: the three or four beliefs that, if wrong, sink the idea, most dangerous first.
 4. **What would prove it not worth building**: concrete, observable signals (for example "users keep the spreadsheet because import takes longer than typing").
-5. **MVP scope**: the smallest useful thing, as a short list of user-visible capabilities. Give each capability a stable requirement ID (`REQ-001`, `REQ-002`, ...). Everything here must be buildable by the missions below.
+5. **MVP scope**: the smallest useful thing, as a short list of user-visible capabilities. Give each capability a stable requirement ID (`REQ-001`, `REQ-002`, ...). Everything here must be buildable by the missions below. For a product with a UI also fill the **Design language** section: the subject the look is grounded in, four to six named hex colours, one or two typefaces with their roles, one layout principle, and two or three defaults to avoid. Workers build to it and the UI mission's `judge` rubric cites it, so taste is decided once in the spec, not improvised per task.
 6. **Non-goals**: what the MVP deliberately leaves out.
 7. **Missions**: one line per mission file, in order, saying what it adds and which `REQ-xxx` IDs it satisfies.
 8. **Delivery slicing**: explain any requirement split across missions and any mission expected to exceed the normal PR-size target.
