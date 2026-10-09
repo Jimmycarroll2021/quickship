@@ -75,7 +75,10 @@ def handle(event):
                 return 0
             print("budget exhausted (" + ",".join(b["exhausted"]) + "): write docs/RESULT.json and docs/REPORT.md, then stop", file=sys.stderr)
             return 2
-    if e in ("PostToolUse", "PostToolUseFailure"):
+    # The BUDGET line is context the lead pays for on every call. It is printed every tenth step and whenever a
+    # budget is near or exhausted; a quiet step adds nothing, which over a 400-step mission is a few thousand tokens
+    # of identical readouts the model never needed.
+    if e in ("PostToolUse", "PostToolUseFailure") and (b.get("near") or b.get("exhausted") or b["steps"] % 10 == 0):
         limits = b["limits"]
         ctx = "BUDGET tokens=%d/%s cost=%.2f/%s min=%.1f/%s steps=%d/%s" % (
             b["tokens"], limits["tokens"], b["cost_usd"], limits["cost_usd"],
