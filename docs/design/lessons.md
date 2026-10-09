@@ -47,7 +47,7 @@ quickship component with no effect is either wired up or named for removal rathe
 | Tool design is the agent-computer interface: poka-yoke the arguments | Building effective agents | has | one command per call, relative paths, `step-bind` first, `git -C` |
 | Multi-agent is not shown to beat one good agent; add roles only for a measured failure | harness post (open question) | has | seven roles, each tied to a named failure in the track record; no routing by task type on purpose |
 | Agree what "done" means before code: a contract of testable behaviours the evaluator reviews first | harness design post | has (one-sided) | the brief's criteria and the planner's `done when` are the contract; the reviewer does not pre-review the plan, by design: the criteria are frozen before the run |
-| A standalone, skeptical evaluator is more tractable than a self-critical generator; it still tends to approve despite the defects it found and to test the happy path | harness design post | partial | reviewer is separate and read-only. Backlog: tell it a defect it found is a FAIL item, and to probe edge cases, not the happy path |
+| A standalone, skeptical evaluator is more tractable than a self-critical generator; it still tends to approve despite the defects it found and to test the happy path | harness design post | adopted | reviewer is separate and read-only; its prompt now says a defect it found is a FAIL item and to probe edge cases, not the happy path |
 | Calibrate the evaluator with few-shot graded examples to stop score drift | harness design post | declined for now | grades are PASS or FAIL per criterion with quoted evidence, which drifts less than scores; revisit if judge grades disagree with human review |
 | Agents talk through files, not shared context | harness design post | has | plan.md, ledgers, handoff.md, worker summaries |
 
@@ -55,10 +55,10 @@ quickship component with no effect is either wired up or named for removal rathe
 
 | Lesson | Source | Status | Where |
 |---|---|---|---|
-| Tests are immutable from the agent's side: never remove or edit them to pass | harness post; prompting guide; quickstart | partial | criteria are frozen in the brief; the reviewer fails code without a test. Backlog: reviewer and worker rules against deleting or weakening an existing test |
-| Verify end to end as a user would, through the UI for UI work | harness post; quickstart | partial | strategist requires a Playwright criterion for UI missions. Backlog: the sandbox network allowlist must admit the Playwright browser download hosts |
-| Tests verify, they do not define the solution; report an unreasonable test instead of gaming it | prompting guide | backlog | add to worker prompt |
-| Give the planner a design language for UI products so taste is specified before code, not improvised by the worker | harness design post (planner read the frontend-design skill); frontend-design skill | backlog | a "Design language" section in `docs/PRD_TEMPLATE.md` for UI products; the judge rubric can then cite it |
+| Tests are immutable from the agent's side: never remove or edit them to pass | harness post; prompting guide; quickstart | adopted | criteria are frozen in the brief; the worker may not delete, skip or weaken an existing test; the reviewer fails a diff that does |
+| Verify end to end as a user would, through the UI for UI work | harness post; quickstart | adopted | strategist requires a Playwright criterion for UI missions; the sandbox network allowlist admits Playwright's browser download hosts |
+| Tests verify, they do not define the solution; report an unreasonable test instead of gaming it | prompting guide | adopted | worker prompt |
+| Give the planner a design language for UI products so taste is specified before code, not improvised by the worker | harness design post (planner read the frontend-design skill); frontend-design skill | adopted | "Design language" section in `docs/PRD_TEMPLATE.md`, filled by the strategist; the judge rubric can cite it |
 
 ## Declined, with reasons
 

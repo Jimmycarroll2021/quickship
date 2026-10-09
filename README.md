@@ -216,7 +216,7 @@ What the agents will never do:
 
 - Run a command outside the run's allowlist. In a controller run the shell is restricted to a base set (inspection, git and gh, the package managers and test runners the gate drives) plus whatever the brief's `quality` commands and `test` criteria name. Anything else is refused by name, so a new tool is a brief change, not a surprise.
 
-Agent shell commands also run inside Claude Code's own OS sandbox on macOS, Linux and WSL2: writes stay inside the project, the network is limited to GitHub and the npm and PyPI registries, and the unsandboxed retry is disabled. Native Windows runs commands unsandboxed, and `preflight.py` reports which you have under `sandbox`. The hooks themselves remain cooperative: project scripts, test runners and dependency installers run with whatever the sandbox allows, and a hostile project still needs isolation and restricted credentials beyond this.
+Agent shell commands also run inside Claude Code's own OS sandbox on macOS, Linux and WSL2: writes stay inside the project, the network is limited to GitHub, the npm and PyPI registries and Playwright's browser downloads, and the unsandboxed retry is disabled. Native Windows runs commands unsandboxed, and `preflight.py` reports which you have under `sandbox`. The hooks themselves remain cooperative: project scripts, test runners and dependency installers run with whatever the sandbox allows, and a hostile project still needs isolation and restricted credentials beyond this.
 
 ## Every run ends in exactly one state
 

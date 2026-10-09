@@ -26,6 +26,8 @@ if sb.get("enabled") is not True:
     errs.append("sandbox.enabled must be true: agent shell commands run inside Claude Code's OS sandbox where the platform supports it")
 if sb.get("allowUnsandboxedCommands") is not False:
     errs.append("sandbox.allowUnsandboxedCommands must be false: no unsandboxed retry in an unattended run")
+if "cdn.playwright.dev" not in (sb.get("network", {}) or {}).get("allowedDomains", []):
+    errs.append("sandbox.network.allowedDomains must include cdn.playwright.dev: UI missions verify through Playwright, whose browser download is otherwise blocked")
 print("\n".join(errs)); sys.exit(2 if errs else 0)
 EOF
 }
@@ -38,4 +40,5 @@ expect_contains "negative control names the Write rule" "Write(./.env)" "$OUT"
 expect_contains "negative control names the missing hook" "guard.sh" "$OUT"
 expect_contains "negative control names the sandbox" "sandbox.enabled" "$OUT"
 expect_contains "negative control names the sandbox retry" "allowUnsandboxedCommands" "$OUT"
+expect_contains "negative control names the Playwright host" "cdn.playwright.dev" "$OUT"
 finish

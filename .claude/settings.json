@@ -96,7 +96,10 @@
         "*.npmjs.org",
         "pypi.org",
         "files.pythonhosted.org",
-        "*.pythonhosted.org"
+        "*.pythonhosted.org",
+        "cdn.playwright.dev",
+        "playwright.download.prss.microsoft.com",
+        "playwright.azureedge.net"
       ]
     }
   },
