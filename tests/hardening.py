@@ -199,6 +199,33 @@ class ReleaseTests(unittest.TestCase):
                 self.skipTest('symlinks unavailable without Windows developer mode')
             self.deny(self.event(tool='Write', path='link/file.txt'))
 
+    def test_run_allowlist_base_and_brief_commands(self):
+        for cmd in ('npm test', 'uv run pytest -q', 'bash scripts/gate.sh', 'ls -la', 'cargo test', 'FOO=1 npm test'):
+            with self.subTest(command=cmd):
+                policy.check(self.event(cmd))
+        for cmd in ('dotnet test', 'FOO=1 dotnet test', 'ls && sqlite3 app.db .tables', './init.sh'):
+            with self.subTest(command=cmd):
+                with self.assertRaisesRegex(policy.Denied, 'allowlist'):
+                    policy.check(self.event(cmd))
+        self.b['quality'] = {'profile': 'code', 'lint': {'skip': 'none'}, 'test': 'dotnet test', 'build': 'dotnet build -c Release'}
+        self.b['success_criteria'].append({'kind': 'test', 'cmd': 'ctest --output-on-failure', 'expect': 0})
+        runtime.atomic(runtime.state() / 'controller.json', dict(self.config, brief=self.b))
+        for cmd in ('dotnet test', 'dotnet build', 'ctest -N'):
+            with self.subTest(command=cmd):
+                policy.check(self.event(cmd))
+        with self.assertRaisesRegex(policy.Denied, 'allowlist'):
+            policy.check(self.event('sqlite3 app.db .tables'))
+
+    def test_allowlist_is_controller_run_policy(self):
+        (runtime.state() / 'controller.json').unlink()
+        policy.check(self.event('dotnet test'))
+
+    def test_env_assignment_prefix_does_not_hide_the_command(self):
+        with self.assertRaisesRegex(policy.Denied, 'push to main'):
+            policy.check(self.event('GIT_TERMINAL_PROMPT=0 git push origin main'))
+        with self.assertRaisesRegex(policy.Denied, 'network/deployment'):
+            policy.check(self.event('HTTPS_PROXY= curl https://example.invalid'))
+
     def register(self, slug='work', sid='s001', aid='agent-1'):
         with runtime.transaction() as db:
             runtime.put(db, 'step:' + sid, {'id': sid, 'slug': slug, 'legs': []})

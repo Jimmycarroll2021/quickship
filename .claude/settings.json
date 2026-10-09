@@ -83,6 +83,23 @@
   "attribution": {
     "sessionUrl": true
   },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "api.github.com",
+        "*.githubusercontent.com",
+        "registry.npmjs.org",
+        "*.npmjs.org",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "*.pythonhosted.org"
+      ]
+    }
+  },
   "hooks": {
     "SessionStart": [
       {

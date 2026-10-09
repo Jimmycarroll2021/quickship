@@ -21,6 +21,11 @@ for must in ("git push --force", "git reset --hard", "pip install", "rm -rf", "R
 hooks = s.get("hooks", {})
 if not any("guard.sh" in h.get("command", "") for m in hooks.get("PreToolUse", []) for h in m.get("hooks", [])):
     errs.append("PreToolUse guard.sh hook not wired")
+sb = s.get("sandbox", {})
+if sb.get("enabled") is not True:
+    errs.append("sandbox.enabled must be true: agent shell commands run inside Claude Code's OS sandbox where the platform supports it")
+if sb.get("allowUnsandboxedCommands") is not False:
+    errs.append("sandbox.allowUnsandboxedCommands must be false: no unsandboxed retry in an unattended run")
 print("\n".join(errs)); sys.exit(2 if errs else 0)
 EOF
 }
@@ -31,4 +36,6 @@ expect_exit "negative control: ignored rules and missing denies fail the lint" 2
 expect_contains "negative control names the wildcard rule" "bash tests/*" "$OUT"
 expect_contains "negative control names the Write rule" "Write(./.env)" "$OUT"
 expect_contains "negative control names the missing hook" "guard.sh" "$OUT"
+expect_contains "negative control names the sandbox" "sandbox.enabled" "$OUT"
+expect_contains "negative control names the sandbox retry" "allowUnsandboxedCommands" "$OUT"
 finish

@@ -22,10 +22,31 @@ def command(args, cwd):
     return p.stdout
 
 
+def sandbox_status(root, system=None, which=None):
+    """Whether Claude Code's Bash sandbox will wrap agent shell commands here. Informational: the harness stays
+    cooperative where the platform cannot sandbox, so this never becomes a preflight error."""
+    system = system or ("win32" if os.name == "nt" else sys.platform)
+    which = which or shutil.which
+    try:
+        settings = runtime.load(Path(root) / ".claude/settings.json", {}) or {}
+    except ValueError:
+        settings = {}
+    sandbox = settings.get("sandbox", {}) if isinstance(settings, dict) else {}
+    if not isinstance(sandbox, dict) or sandbox.get("enabled") is not True:
+        return {"available": False, "reason": "disabled in .claude/settings.json"}
+    if system.startswith("win"):
+        return {"available": False, "reason": "native Windows runs commands unsandboxed; use WSL2 for the sandbox"}
+    if system.startswith("linux"):
+        missing = [name for exe, name in (("bwrap", "bubblewrap"), ("socat", "socat")) if not which(exe)]
+        if missing:
+            return {"available": False, "reason": "install " + " and ".join(missing) + " (for example: apt-get install bubblewrap socat)"}
+    return {"available": True, "reason": "shell commands run inside Claude Code's sandbox on this platform"}
+
+
 def inspect(root):
     root = Path(root).resolve()
     errors = []
-    data = {"python": sys.version.split()[0], "errors": errors}
+    data = {"python": sys.version.split()[0], "errors": errors, "sandbox": sandbox_status(root)}
     if sys.version_info < (3, 10):
         errors.append("Python 3.10+ required")
     for exe in ("git", "gh", "claude"):
@@ -72,6 +93,13 @@ def inspect(root):
             for key, value in commands.items():
                 if not value:
                     errors.append("missing quality." + key + " for " + stack)
+        elif not b["mission"].get("base"):
+            # The docs profile diffs against mission.base or origin/HEAD; a repository made with `git init` has no
+            # origin/HEAD, and the gate would only discover that after the model has run.
+            try:
+                command(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root)
+            except (ValueError, OSError, subprocess.SubprocessError):
+                errors.append("docs profile needs mission.base or a resolvable origin/HEAD: push the default branch, then run `git remote set-head origin -a`")
         if (root / ".claude/state/session_id").exists() and not runtime.load(root / ".claude/state/controller.json"):
             errors.append("v0.2 active state: preserve/archive it before starting v0.3; automatic migration refused")
         if (root / ".quickship/conflicts").exists():

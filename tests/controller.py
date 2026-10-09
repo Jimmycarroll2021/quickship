@@ -322,6 +322,33 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn('private@example.invalid',json.dumps(info))
         self.assertEqual(info['auth']['subscriptionType'],'max')
 
+    def test_sandbox_status_reports_platform_and_dependencies(self):
+        runtime.atomic(self.root/'.claude/settings.json',{'sandbox':{'enabled':True}})
+        windows=preflight.sandbox_status(self.root,system='win32')
+        self.assertFalse(windows['available']); self.assertIn('WSL2',windows['reason'])
+        missing=preflight.sandbox_status(self.root,system='linux',which=lambda exe: None)
+        self.assertFalse(missing['available']); self.assertIn('bubblewrap',missing['reason']); self.assertIn('socat',missing['reason'])
+        self.assertTrue(preflight.sandbox_status(self.root,system='linux',which=lambda exe: '/usr/bin/'+exe)['available'])
+        self.assertTrue(preflight.sandbox_status(self.root,system='darwin',which=lambda exe: None)['available'])
+        runtime.atomic(self.root/'.claude/settings.json',{'sandbox':{'enabled':False}})
+        self.assertIn('disabled',preflight.sandbox_status(self.root,system='linux',which=lambda exe: '/usr/bin/'+exe)['reason'])
+        self.assertIn('available',preflight.inspect(self.root)['sandbox'])
+
+    def test_docs_profile_needs_a_resolvable_baseline(self):
+        self.setup_launcher()
+        (runtime.state()/'controller.json').unlink()
+        yaml=('mission:\n  goal: test\n  deliverables:\n    - README.md\n{base}success_criteria:\n  - {{kind: file, path: README.md}}\n'
+              'budgets:\n  tokens: 100\n  cost_usd: 1\n  wall_clock_min: 10\n  steps: 10\npermissions:\n  irreversible:\n'
+              '    default: skip-and-record\nambiguity_policy: choose-default-and-record\nquality:\n  profile: docs\n')
+        (self.root/'BRIEF.yaml').write_text(yaml.format(base=''))
+        with patch.object(preflight,'command',side_effect=ValueError('fixture')):
+            info=preflight.inspect(self.root)
+        self.assertTrue(any('origin/HEAD' in x for x in info['errors']),info['errors'])
+        (self.root/'BRIEF.yaml').write_text(yaml.format(base='  base: main\n'))
+        with patch.object(preflight,'command',side_effect=ValueError('fixture')):
+            info=preflight.inspect(self.root)
+        self.assertFalse(any('origin/HEAD' in x for x in info['errors']),info['errors'])
+
     def test_incompatible_old_runtime_preserved(self):
         self.setup_launcher()
         (runtime.state()/'controller.json').unlink()
