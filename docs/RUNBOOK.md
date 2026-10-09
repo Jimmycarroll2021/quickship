@@ -48,6 +48,7 @@ Two places. Runtime state is gitignored and local to the checkout. Mission state
 | `RUN_STATE` | One line of JSON with the verified state. Written only by the controller. |
 | `REPORT.md` | The report. The controller's verified-outcome heading sits on top of the lead's details. |
 | `ledgers/task.json`, `ledgers/progress.jsonl`, `ledgers/criteria.json` | Task ledger, append-only event log, and the last criteria result. |
+| `ledgers/handoff.md` | The lead's dated notes to its next context window: what is done, what comes next, what to watch. Read the last `Next:` to see where a crashed run stopped. |
 | `plan.md`, `decisions.md`, `overseer.md` | The planner's plan, the decision log (append only), and dated overseer notes. |
 | `runs/<at>-<slug>/` | Archived documents and ledgers from earlier runs. |
 
@@ -89,7 +90,7 @@ Run the same command again:
 bash scripts/run.sh
 ```
 
-The controller keeps the session, the ledgers, the launch counter and the original deadline. Ctrl+C records `SAFE_STOP` and keeps all of them too. Five launches are allowed in total, with exponential backoff between them (`QS_SLEEP` overrides). A verified `DONE` is never published again, and `HALT` needs your review. If the saved session is gone, the controller reports it rather than starting a duplicate mission.
+The controller keeps the session, the ledgers, the launch counter and the original deadline. Ctrl+C records `SAFE_STOP` and keeps all of them too. On resume the lead is re-anchored from files, not from whatever the model remembers: the brief, the plan, its last handoff note and the newest progress events. It reruns the gate before dispatching anything new, so a tree left broken by the crash is fixed before it is built on. Five launches are allowed in total, with exponential backoff between them (`QS_SLEEP` overrides). A verified `DONE` is never published again, and `HALT` needs your review. If the saved session is gone, the controller reports it rather than starting a duplicate mission.
 
 Inside a mission chain, `program.sh` reruns a mission in place when its lead crashed or the controller was interrupted (`"retryable": true` in `COMPLETION.json`), within the same five-launch limit. A mission that ends in any other state, or exits non-zero without a fresh state (`FAILED rc=<n>` in `docs/PROGRAM.md`), stops the chain with exit 3.
 
@@ -107,7 +108,7 @@ The controller ends the lead and the overseer, and the run finishes in `SAFE_STO
 touch .claude/state/force_replan
 ```
 
-At its next check the lead deletes the flag, runs `ledger.py replan`, and reruns the planner with the reason. `replan` bumps `replan_count` and resets `stall_count`. Past `replan_limit` it exits 3, which ends the run in `SAFE_STOP`. The planner must drop disproved facts and change the approach, not reissue the same plan.
+The flag reaches the lead through the `flags:` line of its next re-anchoring (a compaction or resume) and through its own checks. It then runs `ledger.py replan`, which deletes the flag (the lead itself may not remove `.claude/state` files), and reruns the planner with the reason. `replan` bumps `replan_count` and resets `stall_count`. Past `replan_limit` it exits 3, which ends the run in `SAFE_STOP`. The planner must drop disproved facts and change the approach, not reissue the same plan.
 
 ## Raise a budget
 

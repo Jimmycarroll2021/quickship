@@ -65,6 +65,10 @@ def progress_path() -> Path:
     return ledger_dir() / "progress.jsonl"
 
 
+def handoff_path() -> Path:
+    return ledger_dir() / "handoff.md"
+
+
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     runtime.atomic(path, text)
@@ -248,6 +252,28 @@ def replan_limit() -> int:
         raise LedgerError(f"malformed {p}: {exc}") from exc
 
 
+def cmd_handoff(a) -> int:
+    """Append a dated note for the next context window: what is done, what comes next, what to watch.
+    Prose for the model; the machine state stays in task.json and progress.jsonl."""
+    p = handoff_path()
+    text = p.read_text(encoding="utf-8") if p.is_file() else "# Handoff notes\n\nNewest section last. Read the last `Next:` first.\n"
+    section = [f"## {now()}", f"Done: {a.done.strip()}", f"Next: {a.next.strip()}"]
+    for note in a.note or []:
+        section.append(f"Note: {note.strip()}")
+    write_atomic(p, text.rstrip("\n") + "\n\n" + "\n".join(section) + "\n")
+    print(p.relative_to(root()).as_posix())
+    return 0
+
+
+def last_handoff() -> str:
+    """The newest `## ` section of handoff.md, or an empty string."""
+    p = handoff_path()
+    if not p.is_file():
+        return ""
+    parts = p.read_text(encoding="utf-8").split("\n## ")
+    return ("## " + parts[-1]).strip() if len(parts) > 1 else ""
+
+
 def cmd_replan(a) -> int:
     limit = replan_limit()
     task = load_task()
@@ -255,6 +281,11 @@ def cmd_replan(a) -> int:
     task["stall_count"] = 0
     save_task(task)
     write_progress_line("replan", a.slug, a.detail or f"replan {task['replan_count']}/{limit}")
+    flag = state_dir() / "force_replan"
+    if flag.is_file():
+        # The overseer's request is answered by this replan; the lead itself may not delete .claude/state files.
+        flag.unlink()
+        print("cleared force_replan")
     print(f"replan_count={task['replan_count']} limit={limit}")
     if task["replan_count"] > limit:
         print(f"replan budget exceeded ({task['replan_count']} > {limit})", file=sys.stderr)
@@ -398,6 +429,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("stall-check").set_defaults(fn=cmd_stall_check)
     s = sub.add_parser("replan"); s.add_argument("--slug", default="-"); s.add_argument("--detail", default="")
     s.set_defaults(fn=cmd_replan)
+    s = sub.add_parser("handoff"); s.add_argument("done"); s.add_argument("--next", required=True)
+    s.add_argument("--note", action="append"); s.set_defaults(fn=cmd_handoff)
     s = sub.add_parser("step-bind"); s.add_argument("id"); s.set_defaults(fn=lambda a: 0)
     s = sub.add_parser("step-start"); s.add_argument("slug"); s.add_argument("--legs", required=True)
     s.set_defaults(fn=cmd_step_start)

@@ -102,6 +102,28 @@ expect_exit "replan over limit exits 3" 3 led replan
 expect_contains "replan_count is 2" "2" "$(jget "$L/task.json" "d['replan_count']")"
 rm -f "$S/brief.json"
 expect_exit "replan without brief uses default limit 5" 0 led replan
+# the overseer's force_replan flag is answered by a replan; the lead may not delete .claude/state files itself
+touch "$S/force_replan"
+expect_exit "replan with force_replan flag exits 0" 0 led replan
+expect_contains "replan reports the cleared flag" "cleared force_replan" "$OUT"
+[ ! -e "$S/force_replan" ] && ok "replan removes force_replan" || bad "replan removes force_replan"
+expect_exit "replan without the flag exits 0" 0 led replan
+case "$OUT" in *"cleared force_replan"*) bad "replan without the flag says nothing about it";; *) ok "replan without the flag says nothing about it";; esac
+
+# --- handoff: a prose note for the next context window, appended, newest last ---
+rm -f "$L/handoff.md"
+expect_exit "handoff writes handoff.md" 0 led handoff "merged add-readme" --next "dispatch wire-ci" --note "CI needs Node 20"
+expect_contains "handoff prints the path" "docs/ledgers/handoff.md" "$OUT"
+H="$(cat "$L/handoff.md")"
+expect_contains "handoff has Done line" "Done: merged add-readme" "$H"
+expect_contains "handoff has Next line" "Next: dispatch wire-ci" "$H"
+expect_contains "handoff has Note line" "Note: CI needs Node 20" "$H"
+if grep -Eq '^## [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$L/handoff.md"; then ok "handoff section is dated UTC"; else bad "handoff section is dated UTC"; fi
+expect_exit "handoff appends a second section" 0 led handoff "merged wire-ci" --next "run criteria"
+[ "$(grep -c '^## ' "$L/handoff.md")" = "2" ] && ok "handoff keeps earlier sections" || bad "handoff keeps earlier sections ($(grep -c '^## ' "$L/handoff.md"))"
+expect_contains "newest handoff is last" "Next: run criteria" "$(tail -n 1 "$L/handoff.md")"
+expect_exit "handoff without --next exits 2" 2 led handoff "done only"
+if grep -q $'\r' "$L/handoff.md"; then bad "handoff.md is LF"; else ok "handoff.md is LF"; fi
 
 # --- step-start ---
 reset "step goal"; led append note x "one" >/dev/null 2>&1

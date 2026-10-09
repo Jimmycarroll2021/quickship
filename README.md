@@ -321,7 +321,7 @@ Other stacks need explicit `quality` entries. For documentation missions, set `p
 
 **In PowerShell, `bash scripts/run.sh` fails with `execvpe(/bin/bash) failed`.** Plain `bash` in PowerShell is the WSL stub. Use `.\run.cmd`, `.\idea.cmd` and `.\program.cmd`, or open Git Bash.
 
-**The run crashed, or I closed the terminal.** Run `bash scripts/run.sh` again. The controller keeps the session, the ledgers and the original deadline, and it resumes. If the saved session is gone, it says so rather than quietly starting a duplicate mission.
+**The run crashed, or I closed the terminal.** Run `bash scripts/run.sh` again. The controller keeps the session, the ledgers and the original deadline, and it resumes. The lead picks up from files, not memory: its last handoff note in `docs/ledgers/handoff.md` says what was done and what comes next, and it reruns the gate before starting anything new. If the saved session is gone, it says so rather than quietly starting a duplicate mission.
 
 **The agent said it was done, so why is the state `DONE_PARTIAL`?** The controller reran the checks and something failed: a criterion, the gate, the security verdict on the final commit, or a dirty tree. `docs/COMPLETION.json` says which.
 

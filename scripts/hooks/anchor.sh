@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# SessionStart hook. After /compact or a resume, re-injects the mission brief, plan, assumptions,
-# blocked items, budget summary and control flags into context so the lead loop can pick up cleanly.
+# SessionStart hook. After /compact or a resume, re-injects the mission brief, plan, the last handoff note,
+# the progress tail, assumptions, blocked items, budget summary and control flags into context so the lead
+# loop can pick up cleanly from files rather than from whatever compaction kept.
 # Input: hook JSON on stdin. Fails closed: malformed input -> exit 2. No active run -> exit 0, no output.
 set -u
 PY="${QS_PYTHON:-$(command -v python3 || command -v python)}"
@@ -43,6 +44,33 @@ root, budget_line, cancel_flag, replan_flag = sys.argv[1:5]
 state_dir = os.path.join(root, ".claude", "state")
 brief_path = os.path.join(state_dir, "brief.json")
 task_path = os.path.join(root, "docs", "ledgers", "task.json")
+handoff_path = os.path.join(root, "docs", "ledgers", "handoff.md")
+progress_path = os.path.join(root, "docs", "ledgers", "progress.jsonl")
+
+
+def last_handoff(path):
+    """The newest `## ` section of handoff.md (ledger.py handoff), or an empty string."""
+    if not os.path.isfile(path):
+        return ""
+    with open(path, "r", encoding="utf-8") as f:
+        parts = f.read().split("\n## ")
+    return ("## " + parts[-1]).strip() if len(parts) > 1 else ""
+
+
+def progress_tail(path, n):
+    """The last n progress events as `ts step slug event: detail`, oldest first; malformed lines are skipped."""
+    if not os.path.isfile(path):
+        return []
+    out = []
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f.read().splitlines():
+            try:
+                e = json.loads(raw)
+            except ValueError:
+                continue
+            out.append("{} {} {} {}: {}".format(e.get("ts", ""), e.get("step", ""), e.get("slug", ""),
+                                                e.get("event", ""), str(e.get("detail", ""))[:200]))
+    return out[-n:]
 
 
 def build():
@@ -83,6 +111,18 @@ def build():
         lines.append("</plan>")
         lines.append("")
 
+        # What the previous context left for this one: its last handoff note and the newest progress events.
+        # Prose and a short tail, bounded so the budget line and the closing instruction below survive the cap.
+        lines.append("<handoff>")
+        lines.append(last_handoff(handoff_path)[:1200] or "none yet")
+        lines.append("</handoff>")
+        lines.append("")
+        lines.append("<progress>")
+        tail = progress_tail(progress_path, 5)
+        lines.extend(tail or ["none yet"])
+        lines.append("</progress>")
+        lines.append("")
+
         lines.append("<assumptions>")
         for a in task.get("assumptions", []):
             lines.append("- {} ({})".format(a.get("text", ""), a.get("ts", "")))
@@ -101,7 +141,9 @@ def build():
     lines.append(budget_line)
     lines.append("flags: cancel={} force_replan={}".format(cancel_flag, replan_flag))
     lines.append("")
-    lines.append("You never ask a question. Continue the lead loop in CLAUDE.md from step 1.")
+    lines.append("You never ask a question. This is a fresh context: trust the files above, not memory. "
+                 "Continue the lead loop in CLAUDE.md from step 1: run the gate before dispatching anything new, "
+                 "then pick up the <handoff> Next line.")
 
     text = "\n".join(lines)
     return text[:9000]

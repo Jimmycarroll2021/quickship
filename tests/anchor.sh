@@ -55,6 +55,42 @@ expect_contains "context has blocked step" "s003" "$ctx"
 expect_contains "context has cancel=yes" "cancel=yes" "$ctx"
 expect_contains "context has force_replan=no" "force_replan=no" "$ctx"
 expect_contains "context has never-ask sentence" "You never ask a question" "$ctx"
+expect_contains "context tells the lead to run the gate first" "run the gate before dispatching" "$ctx"
+# no handoff note and no progress yet: the sections still appear, so the lead knows nothing was left for it
+expect_contains "context has empty handoff section" "<handoff>
+none yet" "$ctx"
+expect_contains "context has empty progress section" "<progress>
+none yet" "$ctx"
+
+# 3b. a handoff note (ledger.py handoff) and progress lines: the newest handoff section and the last 5 events are injected
+cat > "$CLAUDE_PROJECT_DIR/docs/ledgers/handoff.md" <<'EOF'
+# Handoff notes
+
+## 2026-09-30T09:10:00Z
+Done: merged add-readme
+Next: dispatch wire-ci
+
+## 2026-09-30T09:40:00Z
+Done: wire-ci failed twice on a missing secret
+Next: mark wire-ci failed and run criteria
+Note: CI needs Node 20
+EOF
+: > "$CLAUDE_PROJECT_DIR/docs/ledgers/progress.jsonl"
+for i in 1 2 3 4 5 6; do
+  printf '{"ts":"2026-09-30T09:0%s:00Z","step":"s00%s","slug":"t%s","event":"note","detail":"event %s","state_hash":"h","tokens":0,"cost_usd":0}\n' "$i" "$i" "$i" "$i" >> "$CLAUDE_PROJECT_DIR/docs/ledgers/progress.jsonl"
+done
+echo "not json" >> "$CLAUDE_PROJECT_DIR/docs/ledgers/progress.jsonl"
+OUTH="$(hook anchor.sh "$(sess_json compact)")"; rc=$?
+if [ "$rc" = 0 ]; then ok "compact with handoff: exit 0"; else bad "compact with handoff: exit 0 (rc=$rc out=$OUTH)"; fi
+ctxh="$(printf '%s' "$OUTH" | "$QS_PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])')"
+expect_contains "context has the newest handoff Next line" "Next: mark wire-ci failed and run criteria" "$ctxh"
+expect_contains "context has the newest handoff note" "Note: CI needs Node 20" "$ctxh"
+case "$ctxh" in *"Next: dispatch wire-ci"*) bad "context omits older handoff sections";; *) ok "context omits older handoff sections";; esac
+expect_contains "context has the newest progress event" "s006 t6 note: event 6" "$ctxh"
+expect_contains "context has the fifth-newest progress event" "s002 t2 note: event 2" "$ctxh"
+case "$ctxh" in *"s001 t1"*) bad "context omits progress older than the last 5";; *) ok "context omits progress older than the last 5";; esac
+case "$ctxh" in *"not json"*) bad "malformed progress line is skipped";; *) ok "malformed progress line is skipped";; esac
+rm -f "$CLAUDE_PROJECT_DIR/docs/ledgers/handoff.md" "$CLAUDE_PROJECT_DIR/docs/ledgers/progress.jsonl"
 
 # 4. source resume behaves like compact
 OUT2="$(hook anchor.sh "$(sess_json resume)")"; rc=$?

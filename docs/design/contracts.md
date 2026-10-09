@@ -85,6 +85,7 @@ Every script and hook in this repo builds to these contracts. They are the inter
 | `.claude/state/stop_attempts`, `restarts`, `session_id`, `hook_log` | `hooks/stop.sh`, `run.sh`, `run.sh`, `hooks/guard.sh` | same |
 | `docs/ledgers/task.json` | `scripts/ledger.py` | lead, `hooks/anchor.sh`, overseer |
 | `docs/ledgers/progress.jsonl` | `scripts/ledger.py append` | lead, overseer |
+| `docs/ledgers/handoff.md` | lead (`scripts/ledger.py handoff`) | `hooks/anchor.sh`, the lead's next context |
 | `docs/ledgers/criteria.json` | `scripts/check_criteria.py` | lead, report |
 | `docs/RUN_STATE`, `docs/COMPLETION.json` | the controller (`scripts/runner.py`) only; agents submit `docs/RESULT.json` instead | `hooks/stop.sh` (v0.2 path), `program.sh`, the controller on resume |
 | `docs/REPORT.md` | lead, last | human |
@@ -153,7 +154,8 @@ brief.json is the same structure as JSON. Required: `mission.goal` (string), `mi
 - `append <event> <slug> "<detail>" [--tokens N] [--cost F]` writes one progress line with the current `hash` and the next step id.
 - `hash` prints sha256 of task.json with `replan_count`, `stall_count` and timestamps excluded.
 - `stall-check` exits 1 and increments `stall_count` when any of: the last two progress lines with event `dispatched` have the same slug and the same task goal; the `state_hash` of the last progress line equals the one before it; the last three `failed` lines share the same `detail`; the last line is a `timeout`. Exit 0 otherwise. Prints the reason.
-- `replan` increments `replan_count`, resets `stall_count` to 0, writes a `replan` progress line; exit 3 if the new `replan_count` exceeds `budgets.replan_limit` from brief.json.
+- `replan` increments `replan_count`, resets `stall_count` to 0, writes a `replan` progress line and deletes `$S/force_replan` when the overseer set it (printing `cleared force_replan`); exit 3 if the new `replan_count` exceeds `budgets.replan_limit` from brief.json.
+- `handoff "<done>" --next "<next>" [--note "<caution>"]...` appends a section `## <utc ts>` with `Done:`, `Next:` and any `Note:` lines to `docs/ledgers/handoff.md` (created with a header on first use) and prints the path. Prose for the next context window; the machine state stays in task.json and progress.jsonl. The lead writes one after every merge or failure and before synthesis.
 - `step-start <slug> --legs a,b` writes `$S/current_step.json` with the next step id; exit 2 if legs contain both `untrusted_content` and `outbound`.
 - `facts-invalidate "<substring>"` marks matching facts `valid: false`.
 - `tier [plan|act]` sets or prints `$S/tier` (the lead must never write it with a shell redirect: Claude Code protects `.claude/` paths).
@@ -187,7 +189,7 @@ A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/l
 
 ## Anchoring
 
-`scripts/hooks/anchor.sh` (SessionStart, matcher `compact|resume`): no-op without brief.json. Prints additionalContext (under 9000 characters) containing: `<mission-brief>` with goal, deliverables, success_criteria one per line, budgets, permissions; `<plan>` as a table slug|status|goal from task.json; `<assumptions>`, `<blocked>` lists; the `budget.py` one-line summary; `flags: cancel=<yes|no> force_replan=<yes|no>`; and the sentence `You never ask a question. Continue the lead loop in CLAUDE.md from step 1.`
+`scripts/hooks/anchor.sh` (SessionStart, matcher `compact|resume`): no-op without brief.json. Prints additionalContext (under 9000 characters) containing: `<mission-brief>` with goal, deliverables, success_criteria one per line, budgets, permissions; `<plan>` as a table slug|status|goal from task.json; `<handoff>` with the newest `## ` section of `docs/ledgers/handoff.md` (at most 1200 characters, `none yet` when absent); `<progress>` with the last five progress.jsonl events as `ts step slug event: detail` (details cut at 200 characters, malformed lines skipped, `none yet` when empty); `<assumptions>`, `<blocked>` lists; the `budget.py` one-line summary; `flags: cancel=<yes|no> force_replan=<yes|no>`; and a closing instruction that begins `You never ask a question.`, says the files above outrank memory, and tells the lead to continue the lead loop from step 1, run the gate before dispatching anything new, and pick up the `<handoff>` Next line. Compaction is not the continuity mechanism; these files are.
 
 ## Criteria
 
