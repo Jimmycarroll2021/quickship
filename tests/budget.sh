@@ -66,12 +66,18 @@ echo 11 > "$S/steps"
 out="$(budget --exhausted-only)"; out="${out//$'\r'/}"
 [ "$out" = "steps" ] && ok "steps 11/10 exhausted" || bad "steps 11/10 exhausted (got '$out')"
 
-# near exhaustion (>= 85% of a limit, not yet over): the lead's cue to wrap up with a PR instead of being cut off
+# near exhaustion (>= 75% of a limit, not yet over): the lead's one cue to wrap up instead of being cut off
 echo 9 > "$S/steps"
 out="$(budget)"; out="${out//$'
 '/}"
 expect_contains "steps 9/10: near lists steps" '"near": ["steps"]' "$out"
 expect_contains "steps 9/10: not exhausted" '"exhausted": []' "$out"
+echo 8 > "$S/steps"
+out="$(budget)"; out="${out//$'\r'/}"
+expect_contains "steps 8/10: near lists steps (75% threshold)" '"near": ["steps"]' "$out"
+echo 7 > "$S/steps"
+out="$(budget)"; out="${out//$'\r'/}"
+expect_contains "steps 7/10: near is empty" '"near": []' "$out"
 echo 3 > "$S/steps"
 out="$(budget)"; out="${out//$'
 '/}"
@@ -90,6 +96,15 @@ expect_exit "exhausted: Write src/a.ts denied" 2 hook budget.sh "$(pre_file Writ
 expect_exit "exhausted: Write mydocs/REPORT.md denied" 2 hook budget.sh "$(pre_file Write "mydocs/REPORT.md")"
 expect_exit "exhausted: Read allowed" 0 hook budget.sh "$(pre_file Read "src/a.ts")"
 expect_exit "exhausted: Grep allowed" 0 hook budget.sh '{"hook_event_name":"PreToolUse","tool_name":"Grep","tool_input":{"pattern":"x"}}'
+# wrap-up commands stay possible once exhausted, so finished work is committed and a handoff note left, nothing more
+expect_exit "exhausted: git commit allowed" 0 hook budget.sh "$(pre_bash "git commit -m wip")"
+expect_exit "exhausted: git add allowed" 0 hook budget.sh "$(pre_bash "git add docs/ledgers")"
+expect_exit "exhausted: git -C worktree commit allowed" 0 hook budget.sh "$(pre_bash "git -C .claude/worktrees/x commit -am done")"
+expect_exit "exhausted: ledger handoff allowed" 0 hook budget.sh "$(pre_bash "python scripts/ledger.py handoff done --next next")"
+expect_exit "exhausted: git push denied" 2 hook budget.sh "$(pre_bash "git push origin mission/x")"
+expect_exit "exhausted: commit chained with another command denied" 2 hook budget.sh "$(pre_bash "git commit -m wip && npm publish")"
+expect_exit "exhausted: commit piped denied" 2 hook budget.sh "$(pre_bash "git commit -m wip | tee log")"
+expect_exit "exhausted: other ledger subcommand denied" 2 hook budget.sh "$(pre_bash "python scripts/ledger.py task-add x --goal y --owns z")"
 
 # not exhausted: everything allowed, no stdout
 echo 3 > "$S/steps"
@@ -103,6 +118,12 @@ out="${out//$'\r'/}"
 expect_contains "additionalContext event" '"hookEventName": "PostToolUse"' "$out"
 expect_contains "additionalContext BUDGET" 'BUDGET tokens=' "$out"
 expect_contains "additionalContext steps" 'steps=4/10' "$out"
+case "$out" in *"near="*) bad "BUDGET line has no near= at 4/10";; *) ok "BUDGET line has no near= at 4/10";; esac
+echo 8 > "$S/steps"
+out="$(hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}')"
+out="${out//$'\r'/}"
+expect_contains "BUDGET line names near dimension at 8/10" 'near=steps: stop dispatching' "$out"
+echo 3 > "$S/steps"
 
 # fail closed on malformed input
 expect_exit "garbage stdin fails closed" 2 hook budget.sh "not json"
