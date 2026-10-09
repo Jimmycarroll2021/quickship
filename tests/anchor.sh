@@ -46,6 +46,7 @@ if [ "$rc" = 0 ]; then ok "compact with brief: exit 0"; else bad "compact with b
 parse_err="$(printf '%s' "$OUT" | "$QS_PYTHON" -c 'import json,sys; json.load(sys.stdin)' 2>&1 1>/dev/null)"
 if [ -z "$parse_err" ]; then ok "compact with brief: stdout is valid JSON"; else bad "compact with brief: stdout is valid JSON ($parse_err)"; fi
 ctx="$(printf '%s' "$OUT" | "$QS_PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])')"
+ctx="${ctx//$'\r'/}"   # python on Windows emits CRLF; the two-line needles below must see LF
 expect_contains "context has goal text" "Add a README that describes quickship" "$ctx"
 expect_contains "context has mission-brief tag" "<mission-brief>" "$ctx"
 expect_contains "context has merged slug+status" "add-readme|merged" "$ctx"
@@ -83,6 +84,7 @@ echo "not json" >> "$CLAUDE_PROJECT_DIR/docs/ledgers/progress.jsonl"
 OUTH="$(hook anchor.sh "$(sess_json compact)")"; rc=$?
 if [ "$rc" = 0 ]; then ok "compact with handoff: exit 0"; else bad "compact with handoff: exit 0 (rc=$rc out=$OUTH)"; fi
 ctxh="$(printf '%s' "$OUTH" | "$QS_PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])')"
+ctxh="${ctxh//$'\r'/}"
 expect_contains "context has the newest handoff Next line" "Next: mark wire-ci failed and run criteria" "$ctxh"
 expect_contains "context has the newest handoff note" "Note: CI needs Node 20" "$ctxh"
 case "$ctxh" in *"Next: dispatch wire-ci"*) bad "context omits older handoff sections";; *) ok "context omits older handoff sections";; esac
