@@ -2,9 +2,11 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
-## [Unreleased]
+## [0.3.1] - Unreleased
 
 ### Added
+
+- `QS_TEST_LOG_DIR` retains separate per-suite output, exit codes and job counts for local acceptance evidence.
 
 - `mission.requirements`: an optional list of stable `REQ-xxx` identifiers from `docs/PRD.md`. `brief.py`
   validates it, the strategist writes it into every mission, and the controller renders it into the PR's
@@ -23,6 +25,10 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ### Fixed
 
+- Operator cancellation is rechecked during final verification and before publication commands. It records non-retryable SAFE_STOP and preserves receipts for completed publication side effects.
+- Documentation-only quality checks require a resolvable mission base or `origin/HEAD`; a missing base no longer turns an empty working-tree diff into a pass.
+- Installed-copy tests inherit the outer job limit. Windows defaults to one job, other platforms to at most four; invalid overrides fail before dispatch.
+- Standalone harness self-tests have a 90-minute limit for serial installed-copy coverage. Ordinary project checks retain 15 minutes, and mission deadlines remain authoritative.
 - The self-tests clear an inherited `CLAUDE_PROJECT_DIR`. The Stop hook's gate runs the suite with that
   variable set, which pointed every fixture at the real repo's `.claude/state` and failed the gate on every
   stop in this repo while CI stayed green.

@@ -1,14 +1,32 @@
-# Quickship 0.3.0 release evidence
+# Quickship release evidence
 
-Status: release-readiness implementation and validation complete on 2026-10-03. The changes are prepared for review in PR #11; no merge, release tag or deployment has been performed.
+## v0.3.1 candidate
 
-## Scope and revisions
+Status: patch implementation is under verification. This document will record the final source revision,
+complete local gate, exact-commit CI and fresh private synthetic live acceptance before a readiness PR is opened.
+The existing v0.3.0 release remains unchanged.
+
+The patch addresses cancellation during final verification/publication, unresolved docs-profile bases,
+nested self-test concurrency and retained test evidence. The default project timeout and mission budgets
+remain bounded; only standalone harness self-tests receive a longer limit.
+
+## Published v0.3.0 baseline
+
+PR #11 was merged and v0.3.0 was published on 2026-10-04 at `a83bd80cb38f01b8570da69947c742eadc10c149`.
+The published source tree matches reviewed head `872309da1e4cda8c728d8beb528c059484771ab8`.
+All four Windows/Ubuntu Python 3.10/3.12 jobs passed on the published commit.
+[Published release](https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.0),
+[release-commit CI](https://github.com/Jimmycarroll2021/quickship/actions/runs/37177568767).
+
+The historical acceptance below ran on earlier functional revisions. It is not fresh live validation of v0.3.1.
+
+## Historical v0.3.0 acceptance revisions
 
 Quickship remains a cooperative harness for trusted local development projects, not an operating-system sandbox. The implementation separates agent work from authoritative completion and publication, freezes active policy, records actual reviewer/security responses, enforces explicit quality checks and preserves bounded recovery state.
 
-Final functional revision: `da293dd2c685d0f56c5b77e6301db24b64fa3396`. The successful live documentation chain installed revision `2f55577d041c632cfbae765c01a74edb5f978dfc`. The subsequent functional change bounds every publication command by the remaining deadline, rechecks that deadline between commands and refuses DONE if publication exceeds it. That change passed focused provider simulations and the complete CI matrix. The earlier successful Node mission exercised the same controller design before the integration fixes below; it is not represented as an end-to-end run of the final revision.
+Earlier functional revision: `da293dd2c685d0f56c5b77e6301db24b64fa3396`. The successful live documentation chain installed revision `2f55577d041c632cfbae765c01a74edb5f978dfc`. The subsequent functional change bounds every publication command by the remaining deadline, rechecks that deadline between commands and refuses DONE if publication exceeds it. That change passed focused provider simulations and the complete CI matrix. Further review fixes were included in the published v0.3.0 tree; the earlier live runs are not represented as acceptance of those later changes or v0.3.1.
 
-## Automated validation
+## Historical automated validation
 
 - Local hardening suite: 58 tests run, 57 passed and one Windows symlink capability test skipped where unavailable.
 - Local controller/provider suite: 22 tests passed, including saved-session recovery, publication reconciliation, report restoration and deadline boundaries.
@@ -18,7 +36,7 @@ Final functional revision: `da293dd2c685d0f56c5b77e6301db24b64fa3396`. The succe
 
 These cover cooperative command restrictions, worker ownership, subagent binding, frozen harness integrity, real-review evidence matching, accounting that does not rewind after transcript changes, criteria subprocess timeout, strict quality configuration, installer conflicts, terminal states, crash recovery and duplicate-publication prevention. Simulated providers are identified separately from the live results below.
 
-## Live validation
+## Historical live validation
 
 A private synthetic acceptance repository, not published, contains a small Node helper and built-in Node tests, with no personal data or production services. Claude Code 2.1.288 used Claude subscription authentication. Usage credits were disabled before testing; the work changed no billing settings. Dollar counters are API-equivalent estimates, not subscription charges. Live testing took place on Windows with Git Bash; Linux is covered by automated CI.
 
@@ -59,4 +77,4 @@ Project scripts, dependency installation and indirect code execution remain trus
 
 Live acceptance covers a small Node mission and documentation missions on Windows. Ubuntu compatibility has automated evidence. macOS, cloud execution, Python application delivery, every language ecosystem and live overseer operation were not exercised by these acceptance runs; overseer behavior has regression coverage. No production-readiness claim is made for arbitrary projects.
 
-The readiness PR is prepared for human code review. Merge and release publication are separate actions.
+v0.3.0 is published. Any v0.3.1 readiness PR requires human review; merge and release publication are separate actions.

@@ -24,6 +24,15 @@ EXITS = {"DONE": 0, "DONE_PARTIAL": 3, "SAFE_STOP": 3, "HALT": 4, "ERROR": 5}
 USAGE = "usage: bash scripts/run.sh [--archive]"
 
 
+class Cancelled(Exception):
+    """An operator stop request, rather than a retryable controller error."""
+
+
+def check_cancellation():
+    if (runtime.state() / "cancel").exists():
+        raise Cancelled("cancelled")
+
+
 def now():
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -55,6 +64,12 @@ def hashes(root):
 
 def finish(root, state, reason, details=None, retryable=False):
     # retryable: a plain rerun can resume this run (the lead crashed or an exception interrupted the controller).
+    details = dict(details or {})
+    if state == "SAFE_STOP" and reason == "cancelled":
+        with runtime.transaction() as db:
+            receipt = runtime.get(db, "publication", {})
+        if receipt:
+            details.setdefault("publication", receipt)
     result = {"schema": 3, "state": state, "reason": reason, "at": now(), "retryable": retryable, **(details or {})}
     runtime.atomic(root / "docs/RUN_STATE", {k: result[k] for k in ("state", "reason", "at")})
     runtime.atomic(root / "docs/COMPLETION.json", result)
@@ -192,9 +207,9 @@ def verify_criteria(root, brief, config):
 
 
 
-def pr_scope(root, base, head):
+def pr_scope(root, base, head, command=None):
     """Return reviewable changed lines, total changed files, and excluded generated paths."""
-    out = run(["git", "diff", "--numstat", base + "..." + head], root)
+    out = (command or run)(["git", "diff", "--numstat", base + "..." + head], root)
     lines = 0
     files = 0
     excluded = []
@@ -216,13 +231,15 @@ def pr_scope(root, base, head):
     return {"reviewable_lines": lines, "files": files, "excluded": excluded}
 
 
-def render_pr_body(root, brief, branch, base, head):
-    """Render the repository PR template with controller-verified mission evidence."""
+def render_pr_body(root, brief, branch, base, head, command=None):
+    """Render the repository PR template with controller-verified mission evidence.
+
+    `command` runs the diff that sizes the PR; publish passes its deadline- and cancellation-checking wrapper."""
     template = root / ".github/pull_request_template.md"
     if not template.is_file():
         raise ValueError("missing .github/pull_request_template.md")
     body = template.read_text(encoding="utf-8")
-    scope = pr_scope(root, base, head)
+    scope = pr_scope(root, base, head, command)
     body = body.replace("`<mission-branch>`", "`" + branch + "`")
     body = body.replace("`<reviewable-lines>`", "`" + str(scope["reviewable_lines"]) + "`")
     body = body.replace("`<file-count>`", "`" + str(scope["files"]) + "`")
@@ -256,7 +273,9 @@ def render_pr_body(root, brief, branch, base, head):
     return body.rstrip() + "\n"
 
 def publish(root, config, branch, head):
+    check_cancellation()
     def command(args, root, timeout=30):
+        check_cancellation()
         if time.time() >= config["deadline"]:
             raise ValueError("wall-clock deadline exceeded during publication")
         return run(args, root, timeout=min(timeout, remaining(config)))
@@ -281,15 +300,23 @@ def publish(root, config, branch, head):
     remote = command(["git", "ls-remote", "origin", "refs/heads/" + branch], root)
     if not remote or remote.split()[0] != head:
         command(["git", "push", "origin", branch], root, timeout=remaining(config))
+    record.update({"status": "pushed", "head": head})
+    with runtime.transaction() as db:
+        runtime.put(db, "publication", record)
     prs = json.loads(command(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
                          "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) > 1:
         raise ValueError("multiple matching PRs; refusing duplicate publication")
     if not prs:
         body = runtime.state() / "pr-body.md"
-        runtime.atomic(body, render_pr_body(root, brief, branch, base, head))
-        command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
-             "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
+        runtime.atomic(body, render_pr_body(root, brief, branch, base, head, command))
+        created = command(["gh", "pr", "create", "--head", branch, "--base", base, "--title", brief["mission"]["goal"][:200],
+                          "--body-file", str(body), *repo_flags], root, timeout=remaining(config))
+        record["status"] = "pr-created"
+        if re.fullmatch(r"https://github\.com/[^/]+/[^/]+/pull/[0-9]+", created):
+            record["url"] = created
+        with runtime.transaction() as db:
+            runtime.put(db, "publication", record)
         prs = json.loads(command(["gh", "pr", "list", "--state", "open", "--head", branch, "--base", base,
                              "--json", "url,headRefOid,headRefName,baseRefName", *repo_flags], root))
     if len(prs) != 1 or prs[0]["headRefOid"] != head or prs[0]["headRefName"] != branch or prs[0]["baseRefName"] != base:
@@ -304,6 +331,8 @@ def publish(root, config, branch, head):
 
 
 def finalize(root, config):
+    if (runtime.state() / "cancel").exists():
+        return finish(root, "SAFE_STOP", "cancelled")
     if hashes(root) != config["hashes"]:
         return finish(root, "HALT", "active harness or brief changed")
     candidate = runtime.load(root / "docs/RESULT.json")
@@ -324,7 +353,11 @@ def finalize(root, config):
     if exhausted:
         return finish(root, "DONE_PARTIAL", "budget exhausted before final verification", {"exhausted": exhausted})
     gate = quality.gate(root, b, config["deadline"])
+    if (runtime.state() / "cancel").exists():
+        return finish(root, "SAFE_STOP", "cancelled", {"gate": gate})
     criteria = verify_criteria(root, b, config)
+    if (runtime.state() / "cancel").exists():
+        return finish(root, "SAFE_STOP", "cancelled", {"gate": gate, "criteria": criteria})
     missing = []
     for name in b["mission"]["deliverables"]:
         path = policy.resolve_path(name, root)
@@ -349,6 +382,11 @@ def finalize(root, config):
     branch = run(["git", "branch", "--show-current"], root)
     try:
         details["publication"] = publish(root, config, branch, head)
+        check_cancellation()
+    except Cancelled as exc:
+        with runtime.transaction() as db:
+            details["publication"] = runtime.get(db, "publication", {})
+        return finish(root, "SAFE_STOP", str(exc), details)
     except policy.Denied as exc:
         return finish(root, "DONE_PARTIAL", str(exc), details)
     if time.time() >= config["deadline"]:

@@ -85,4 +85,33 @@ else
   bad "QS_TEST_JOBS=1 runs tests one at a time (s1 end $s1e, s2 start $s2s)"
 fi
 
+# --- invalid limits fail promptly, rather than launching an unbounded run ---
+for invalid in 0 -1 nope 1.5 "" 1025 99999999999999999999999999999999999999; do
+  expect_exit "invalid QS_TEST_JOBS '$invalid' exits 2" 2 env QS_TEST_JOBS="$invalid" bash -c "cd '$d' && bash tests/run.sh"
+done
+
+# --- requested logs survive successful and failed runs, with separate nested directories ---
+logs="$(tmpdir)/logs with spaces"
+expect_exit "retained logs: first run" 0 env QS_TEST_JOBS=1 QS_TEST_LOG_DIR="$logs" bash -c "cd '$d' && bash tests/run.sh"
+expect_exit "retained logs: second run" 0 env QS_TEST_JOBS=1 QS_TEST_LOG_DIR="$logs" bash -c "cd '$d' && bash tests/run.sh"
+count="$(find "$logs" -name s1.sh.rc -type f | wc -l | tr -d ' ')"
+[ "$count" = 2 ] && ok "runs retain separate log directories" || bad "runs retain separate log directories (got $count)"
+write_test "$d" fail.sh 1 "deliberate fixture failure"
+expect_exit "retained logs: failed run exits 2" 2 env QS_TEST_JOBS=1 QS_TEST_LOG_DIR="$logs" bash -c "cd '$d' && bash tests/run.sh"
+failure_rc="$(find "$logs" -name fail.sh.rc -type f -exec cat {} \;)"
+[ "$failure_rc" = 1 ] && ok "failed script's exit code retained" || bad "failed script's exit code retained"
+
+# --- defaults are bounded on both supported platform families ---
+bin="$(tmpdir)/bin"; mkdir -p "$bin"
+printf '#!/usr/bin/env bash\necho 64\n' > "$bin/nproc"; chmod +x "$bin/nproc"
+for platform in MINGW64_NT Linux; do
+  printf '#!/usr/bin/env bash\necho %s\n' "$platform" > "$bin/uname"; chmod +x "$bin/uname"
+  defaults_logs="$(tmpdir)/defaults"
+  defaults_fixture="$(mkfixture)"; write_test "$defaults_fixture" pass.sh 0 pass
+  expect_exit "$platform default passes" 0 env -u QS_TEST_JOBS PATH="$bin:$PATH" QS_TEST_LOG_DIR="$defaults_logs" bash -c "cd '$defaults_fixture' && bash tests/run.sh"
+  got_jobs="$(find "$defaults_logs" -name jobs -type f -exec cat {} \;)"
+  want_jobs=4; [ "$platform" != MINGW64_NT ] || want_jobs=1
+  [ "$got_jobs" = "$want_jobs" ] && ok "$platform default job limit $want_jobs" || bad "$platform default job limit (got $got_jobs)"
+done
+
 finish

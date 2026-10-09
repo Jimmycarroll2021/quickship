@@ -201,7 +201,27 @@ A merged mission PR carries `docs/RUN_STATE`, `REPORT.md`, `plan.md` and `docs/l
 
 Every denial appends `<utc ts>	DENY	<tool>	<reason>	<arg>` (five tab-separated fields) to `$S/hook_log`; allowed PreToolUse calls keep the three-field line `<ts>	<tool>	<arg>`. `overseer_status.py` counts trailing consecutive DENY lines with the same reason as `repeated_denials`.
 
-## Install and upgrade
+## Patch release validation and cancellation
+
+The controller checks `.claude/state/cancel` before final verification, after the gate and criteria checks,
+before each publication command, and before recording DONE. Cancellation records non-retryable SAFE_STOP.
+Successful push and PR-create commands update the publication receipt (`pushed` or `pr-created`); SAFE_STOP
+includes any recorded receipt, so completed side effects are retained for reconciliation rather than erased.
+
+The documentation-only profile compares against `mission.base`, otherwise `origin/HEAD`. Failure to resolve
+or compare that base fails the profile; an empty working-tree diff is not an alternative baseline.
+
+Standalone harness self-test commands have a 3600-second timeout. Ordinary project checks keep their
+900-second default. When the controller supplies a deadline, its remaining time governs every check;
+an already-expired deadline records exit 124 without launching a subprocess. Gate exits remain 0 or 2.
+
+`tests/run.sh` accepts `QS_TEST_JOBS` as an integer from 1 to 1024. Its default is 1 on Windows and at most
+4 elsewhere. Installed-copy tests inherit this limit and set `QS_INIT_NESTED=1` to prevent recursion.
+An optional `QS_TEST_LOG_DIR` retains a unique `run.*` directory per suite with `jobs`, `<script>.out`
+and `<script>.rc`. Without it, temporary logs are deleted as before. Test results stay filename-ordered.
+Logs may contain private data and must not be uploaded without review.
+
+## Install and upgrade behavior
 
 `scripts/init.sh <target-dir> [--force] [--upgrade]` installs the files listed in `scripts/manifest.txt` into a project (git-initialising it if needed), appends the four ignore lines (`.claude/worktrees/`, `.claude/state/`, `work/_untrusted/`, `__pycache__/`), creates `docs/decisions.md` and `BRIEF.yaml` when absent, and records `.quickship/VERSION` and `.quickship/manifest.sha256`. A target file that differs from the source is skipped unless `--force`; `--upgrade` replaces only files whose current sha still matches the recorded one. `CLAUDE.md` is never overwritten. `run.cmd` and `init.cmd` are Windows wrappers that locate Git Bash.
 

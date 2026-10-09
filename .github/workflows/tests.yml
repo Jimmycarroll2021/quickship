@@ -22,7 +22,9 @@ jobs:
         shell: bash
         env:
           QS_PYTHON: python
-        run: bash tests/run.sh
+          QS_TEST_JOBS: "2"
+          PYTHONUTF8: "1"
+        run: bash scripts/gate.sh
 
   ci-required:
     name: ci-required
