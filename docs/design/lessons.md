@@ -1,10 +1,10 @@
 # Lessons from published harness work, and what quickship does with them
 
 Sources, read in full in October 2026: Anthropic's "Building effective agents", "Effective harnesses for
-long-running agents" and "Harness design for long-running apps"; the `autonomous-coding` quickstart in
-anthropics/claude-quickstarts; the "Claude prompting best practices" page (long-horizon state tracking); the
-Claude Code `frontend-design` skill; and the Wikipedia article on generative adversarial networks, read as an
-analogy for a generator-and-critic loop.
+long-running agents", "Harness design for long-running apps" and "Effective context engineering for AI agents";
+the `autonomous-coding` quickstart in anthropics/claude-quickstarts; the "Claude prompting best practices" page
+(long-horizon state tracking); the Claude Code `frontend-design` skill; and the Wikipedia article on generative
+adversarial networks, read as an analogy for a generator-and-critic loop.
 
 Status: **has** = already in quickship before this document; **adopted** = added with this document or later
 (see CHANGELOG); **backlog** = agreed gap, not yet built; **declined** = judged not worth its complexity here.
@@ -32,6 +32,12 @@ quickship component with no effect is either wired up or named for removal rathe
 | Start script that avoids rediscovering how to run and test the app | harness post; prompting guide | has | `gate.sh` stack detection and the brief's `quality` commands |
 | Deliberate context resets between units are no longer needed on Opus 4.5 and later; one continuous session with compaction held for hours | harness design post | has | the controller resumes the same session; handoff files exist for crashes and compaction, not as a reset schedule |
 | Decompose into sprints only while the model needs it; stress-test every harness component as models improve | harness design post | has (tasks are the unit, their size is the planner's call) | planner rules; see the simplification backlog below |
+| Context is a finite attention budget: the smallest set of high-signal tokens; a fresh window gets the summary plus the most recently accessed files | context engineering post | adopted | the anchor pack is capped at 9000 characters and now carries `<recent-files>` (uncommitted changes, then the last three commits, five paths) with "read these first, fetch the rest as needed" |
+| Tool results bloat the window; clear or thin what is not signal | context engineering post | adopted | the BUDGET readout after every tool call now prints every tenth step and whenever a budget is near or exhausted, instead of on every call |
+| Just-in-time retrieval over lightweight identifiers rather than pre-loading | context engineering post | has | the anchor injects slugs, statuses and paths, not file contents; agents use Read, Glob and Grep on demand |
+| Structured note-taking outside the window, read back after a reset | context engineering post | has | ledgers in JSON, `handoff.md` in prose, `decisions.md` |
+| Sub-agents keep detailed exploration in their own window and return a condensed result | context engineering post | has | worker returns three lines and paths, reviewer a verdict list, planner a path and a count, researcher one file path |
+| System prompt at the right altitude: concrete heuristics, not brittle branching or vague guidance; start minimal, add on observed failures | context engineering post | has, with one deliberate exception | the lead loop is a numbered procedure because tools enforce its steps; the agent prompts are heuristics plus one canonical example each |
 
 ## Orchestration and evaluation
 
@@ -46,7 +52,8 @@ quickship component with no effect is either wired up or named for removal rathe
 | Human checkpoints at the irreversible edge | Building effective agents | has | the controller publishes a PR; the human owns the merge |
 | Tool design is the agent-computer interface: poka-yoke the arguments | Building effective agents | has | one command per call, relative paths, `step-bind` first, `git -C` |
 | Multi-agent is not shown to beat one good agent; add roles only for a measured failure | harness post (open question) | has | seven roles, each tied to a named failure in the track record; no routing by task type on purpose |
-| Agree what "done" means before code: a contract of testable behaviours the evaluator reviews first | harness design post | has (one-sided) | the brief's criteria and the planner's `done when` are the contract; the reviewer does not pre-review the plan, by design: the criteria are frozen before the run |
+| Agree what "done" means before code: a contract of testable behaviours the evaluator reviews first | harness design post | adopted | the brief's criteria are frozen before the run; each planned task's `done when` is now a command or a criterion index, and the reviewer grades every merged task against it. No pre-review round: the contract is structural, not negotiated |
+| The planner is ambitious at product altitude and leaves implementation to the workers; granular technical decisions in the spec cascade | harness design post ("without the planner, the generator under-scoped") | adopted | PRD gains a Product vision section the MVP is cut from; the strategist stays at product context and high-level design; task goals name outcomes, not paths |
 | A standalone, skeptical evaluator is more tractable than a self-critical generator; it still tends to approve despite the defects it found and to test the happy path | harness design post | adopted | reviewer is separate and read-only; its prompt now says a defect it found is a FAIL item and to probe edge cases, not the happy path |
 | Calibrate the evaluator with few-shot graded examples to stop score drift | harness design post | declined for now | grades are PASS or FAIL per criterion with quoted evidence, which drifts less than scores; revisit if judge grades disagree with human review |
 | Agents talk through files, not shared context | harness design post | has | plan.md, ledgers, handoff.md, worker summaries |

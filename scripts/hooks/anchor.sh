@@ -35,12 +35,18 @@ fi
 cancel_flag="no"; [ -f "$S/cancel" ] && cancel_flag="yes"
 replan_flag="no"; [ -f "$S/force_replan" ] && replan_flag="yes"
 
-"$PY" - "$ROOT" "$budget_line" "$cancel_flag" "$replan_flag" <<'PYEOF'
+# The files the previous context touched last: uncommitted changes first, then the last three commits. A fresh
+# context reads these before anything else in the code, the way Claude Code's own compaction hands over the
+# summary plus the most recently accessed files.
+recent="$( { git -C "$ROOT" status --porcelain 2>/dev/null | cut -c4-; git -C "$ROOT" log -n 3 --name-only --pretty=format: 2>/dev/null; } | awk 'NF && !seen[$0]++' | head -n 5 )"
+recent="${recent//$'\r'/}"
+
+"$PY" - "$ROOT" "$budget_line" "$cancel_flag" "$replan_flag" "$recent" <<'PYEOF'
 import json
 import os
 import sys
 
-root, budget_line, cancel_flag, replan_flag = sys.argv[1:5]
+root, budget_line, cancel_flag, replan_flag, recent = sys.argv[1:6]
 state_dir = os.path.join(root, ".claude", "state")
 brief_path = os.path.join(state_dir, "brief.json")
 task_path = os.path.join(root, "docs", "ledgers", "task.json")
@@ -122,6 +128,10 @@ def build():
         lines.extend(tail or ["none yet"])
         lines.append("</progress>")
         lines.append("")
+        lines.append("<recent-files>")
+        lines.extend([p for p in recent.splitlines() if p.strip()] or ["none yet"])
+        lines.append("</recent-files>")
+        lines.append("")
 
         lines.append("<assumptions>")
         for a in task.get("assumptions", []):
@@ -142,6 +152,7 @@ def build():
     lines.append("flags: cancel={} force_replan={}".format(cancel_flag, replan_flag))
     lines.append("")
     lines.append("You never ask a question. This is a fresh context: trust the files above, not memory. "
+                 "Read <handoff> and <recent-files> before anything else in the code; fetch the rest only as you need it. "
                  "Continue the lead loop in CLAUDE.md from step 1: run the gate before dispatching anything new, "
                  "then pick up the <handoff> Next line.")
 

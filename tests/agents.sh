@@ -23,6 +23,13 @@ expect_contains "reviewer: a found defect is a FAIL item" "A defect you found is
 # taste is decided once in the PRD for UI products
 expect_contains "strategist: design language in the PRD" "Design language" "$(cat "$ROOT/.claude/agents/strategist.md")"
 expect_contains "PRD template: design language section" "## Design language" "$(cat "$ROOT/docs/PRD_TEMPLATE.md")"
+# the planner is ambitious at product altitude and leaves the path to the workers; each task's done-when is a check, not prose
+expect_contains "strategist: product vision section" "Product vision" "$(cat "$ROOT/.claude/agents/strategist.md")"
+expect_contains "strategist: stays at product altitude" "high-level technical design" "$(cat "$ROOT/.claude/agents/strategist.md")"
+expect_contains "PRD template: product vision section" "## Product vision" "$(cat "$ROOT/docs/PRD_TEMPLATE.md")"
+expect_contains "planner: done-when is a command or a criterion" 'criterion <n>' "$(cat "$ROOT/.claude/agents/planner.md")"
+expect_contains "planner: outcome not implementation steps" "not as implementation steps" "$(cat "$ROOT/.claude/agents/planner.md")"
+expect_contains "reviewer: grades each merged task's done-when" "done-when not met" "$(cat "$ROOT/.claude/agents/reviewer.md")"
 # the researcher reads untrusted web content (lethal-trifecta rule): it has no shell by frontmatter, in every mode
 R_MD="$ROOT/.claude/agents/researcher.md"
 case "$(grep '^tools:' "$R_MD")" in *Bash*) bad "researcher: tools has no Bash";; *) ok "researcher: tools has no Bash";; esac

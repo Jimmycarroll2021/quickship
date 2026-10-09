@@ -15,17 +15,18 @@ Read the idea text in the prompt (it came from `IDEA.md` or the file named there
 
 ## Step 2: pressure-test, then write `docs/PRD.md`
 
-Think like a sceptical founder before a product manager: who hurts, how badly, and what is the smallest thing worth shipping. Write `docs/PRD.md` with exactly these sections:
+Think like a sceptical founder before a product manager: who hurts, how badly, and what is the smallest thing worth shipping. Be ambitious about what the product could be and strict about what ships first. Stay at product context and high-level technical design: say what the user gets and how it is proved, not how it is implemented. A granular technical decision made here is copied into every mission, so an error here cascades; constrain the deliverables and the criteria and leave the path to the workers. Write `docs/PRD.md` with exactly these sections:
 
 1. **Idea**: the idea restated in two or three plain sentences.
 2. **User and pain**: who the user is, the painful job they are trying to do, what they use today instead, and why they would switch.
 3. **Riskiest assumptions**: the three or four beliefs that, if wrong, sink the idea, most dangerous first.
 4. **What would prove it not worth building**: concrete, observable signals (for example "users keep the spreadsheet because import takes longer than typing").
-5. **MVP scope**: the smallest useful thing, as a short list of user-visible capabilities. Give each capability a stable requirement ID (`REQ-001`, `REQ-002`, ...). Everything here must be buildable by the missions below. For a product with a UI also fill the **Design language** section: the subject the look is grounded in, four to six named hex colours, one or two typefaces with their roles, one layout principle, and two or three defaults to avoid. Workers build to it and the UI mission's `judge` rubric cites it, so taste is decided once in the spec, not improvised per task.
-6. **Non-goals**: what the MVP deliberately leaves out.
-7. **Missions**: one line per mission file, in order, saying what it adds and which `REQ-xxx` IDs it satisfies.
-8. **Delivery slicing**: explain any requirement split across missions and any mission expected to exceed the normal PR-size target.
-9. **Assumptions made**: every default you chose because the idea did not say (stack, platform, data format, user count, offline or not). Respect the "Constraints" list; never contradict it.
+5. **Product vision**: the whole product if the idea works, as five to eight capabilities, one line each, ambitious. This is the map the MVP is cut from and later missions draw on. Nothing here is built unless it also appears in MVP scope; a one-paragraph idea left to a worker under-scopes, and this section is where the ambition lives instead.
+6. **MVP scope**: the smallest useful thing, as a short list of user-visible capabilities drawn from the vision. Give each capability a stable requirement ID (`REQ-001`, `REQ-002`, ...). Everything here must be buildable by the missions below. For a product with a UI also fill the **Design language** section: the subject the look is grounded in, four to six named hex colours, one or two typefaces with their roles, one layout principle, and two or three defaults to avoid. Workers build to it and the UI mission's `judge` rubric cites it, so taste is decided once in the spec, not improvised per task.
+7. **Non-goals**: what the MVP deliberately leaves out.
+8. **Missions**: one line per mission file, in order, saying what it adds and which `REQ-xxx` IDs it satisfies.
+9. **Delivery slicing**: explain any requirement split across missions and any mission expected to exceed the normal PR-size target.
+10. **Assumptions made**: every default you chose because the idea did not say (stack, platform, data format, user count, offline or not). Respect the "Constraints" list; never contradict it.
 
 Stack default when the idea names none: a CLI or library is a Python 3.12 package managed with `uv` (`pyproject.toml`, `pytest`, `ruff`); anything with a web UI is a TypeScript app on `npm` (Vite plus Vitest, Playwright for end-to-end). The quality gate (`scripts/gate.sh`) detects only these manifests: `package.json` (runs the `lint`, `test` and `build` scripts that exist) or `pyproject.toml` / `requirements.txt` (runs `ruff check .`, `pytest -q`, and a build when `[build-system]` is present).
 
@@ -39,7 +40,7 @@ Treat each mission as one independently reviewable PR. Prefer one logical outcom
 - **Every mission** has explicit `quality` commands for the planned stack, including skeleton missions before a manifest exists. Use `quality.profile: docs` only for documentation changes. Node missions specify lint/test/build commands; Python missions specify lint scoped to application files, pytest and build, or an explicit build skip reason when no artifact is required. Missing checks are failures, never implicit skips.
 - **Every executable a mission needs** appears in one of its `quality` commands or `test` criteria: the run's shell allowlist is built from them plus a base set (git, gh, npm/npx/pnpm/yarn/bun, node, uv, python, pytest, ruff, make, cargo, go and inspection commands). A tool named nowhere cannot be run during the mission.
 - **Every mission** has a `requirements` list naming the `REQ-xxx` identifiers from the PRD that it advances. Across the mission set every MVP requirement is covered, and no mission cites an identifier the PRD does not define.
-- **Every mission** has a focused `goal` (one or two sentences naming the user-visible outcome), `deliverables` (file or directory paths), and `success_criteria` with:
+- **Every mission** has a focused `goal` (one or two sentences naming the user-visible outcome, never the implementation path), `deliverables` (file or directory paths), and `success_criteria` with:
   - at least one `test` criterion whose `cmd` is a real command that proves the behaviour, such as `uv run pytest -q tests/test_import.py` or `npm test`, never only that a file exists;
   - exactly one `judge` criterion with a `rubric` a reviewer can grade from evidence;
   - for a mission that builds or changes UI, also a Playwright `test` criterion such as `npx playwright test`.

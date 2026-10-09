@@ -115,14 +115,22 @@ expect_exit "within budget: Bash allowed" 0 hook budget.sh "$(pre_bash "npm test
 out="$(hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}')"
 out="${out//$'\r'/}"
 [ "$(cat "$S/steps")" = "4" ] && ok "PostToolUse increments steps 3 -> 4" || bad "PostToolUse increments steps (got $(cat "$S/steps"))"
-expect_contains "additionalContext event" '"hookEventName": "PostToolUse"' "$out"
-expect_contains "additionalContext BUDGET" 'BUDGET tokens=' "$out"
-expect_contains "additionalContext steps" 'steps=4/10' "$out"
-case "$out" in *"near="*) bad "BUDGET line has no near= at 4/10";; *) ok "BUDGET line has no near= at 4/10";; esac
-echo 8 > "$S/steps"
+# the BUDGET line is context the lead pays for on every call: it appears every tenth step and whenever a budget
+# is near or exhausted, and a quiet step prints nothing
+[ -z "$out" ] && ok "PostToolUse at 4/10: quiet step prints no BUDGET line" || bad "PostToolUse at 4/10: quiet step prints no BUDGET line (got '$out')"
+write_brief 1000000 100 1000 100
+echo 9 > "$S/steps"
 out="$(hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}')"
 out="${out//$'\r'/}"
-expect_contains "BUDGET line names near dimension at 8/10" 'near=steps: stop dispatching' "$out"
+expect_contains "additionalContext event" '"hookEventName": "PostToolUse"' "$out"
+expect_contains "additionalContext BUDGET on the tenth step" 'BUDGET tokens=' "$out"
+expect_contains "additionalContext steps" 'steps=10/100' "$out"
+case "$out" in *"near="*) bad "BUDGET line has no near= at 10/100";; *) ok "BUDGET line has no near= at 10/100";; esac
+echo 77 > "$S/steps"
+out="$(hook budget.sh '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{}}')"
+out="${out//$'\r'/}"
+expect_contains "BUDGET line names near dimension at 78/100" 'near=steps: stop dispatching' "$out"
+write_brief 1000000 100 1000 10
 echo 3 > "$S/steps"
 
 # fail closed on malformed input

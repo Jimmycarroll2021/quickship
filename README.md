@@ -109,7 +109,7 @@ On Windows, open PowerShell and run `quickship\init.cmd C:\path\to\my-project`. 
 
 A single brief gets you a single pull request. To go from a raw idea to an MVP, let quickship write the briefs too.
 
-`idea.sh` runs a strategist agent once. It pressure-tests the idea, writes a short PRD with the riskiest assumptions and the smallest useful scope, and splits the MVP into sequenced missions. Each mission has testable criteria. `program.sh` then runs the missions one after another. Each mission branches off the previous one, so the pull requests form a stack. You review and merge them in order, first one first.
+`idea.sh` runs a strategist agent once. It pressure-tests the idea, writes a short PRD with the product vision, the riskiest assumptions and the smallest useful scope cut from that vision, and splits the MVP into sequenced missions. Each mission has testable criteria. `program.sh` then runs the missions one after another. Each mission branches off the previous one, so the pull requests form a stack. You review and merge them in order, first one first.
 
 ```mermaid
 flowchart LR
