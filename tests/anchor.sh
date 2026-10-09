@@ -92,7 +92,28 @@ expect_contains "context has the newest progress event" "s006 t6 note: event 6" 
 expect_contains "context has the fifth-newest progress event" "s002 t2 note: event 2" "$ctxh"
 case "$ctxh" in *"s001 t1"*) bad "context omits progress older than the last 5";; *) ok "context omits progress older than the last 5";; esac
 case "$ctxh" in *"not json"*) bad "malformed progress line is skipped";; *) ok "malformed progress line is skipped";; esac
+expect_contains "no git repo: recent-files section is empty" "<recent-files>
+none yet" "$ctxh"
 rm -f "$CLAUDE_PROJECT_DIR/docs/ledgers/handoff.md" "$CLAUDE_PROJECT_DIR/docs/ledgers/progress.jsonl"
+
+# 3c. recent files: uncommitted changes first, then the last three commits, five paths at most, no duplicates
+git -C "$CLAUDE_PROJECT_DIR" init -q -b main
+git -C "$CLAUDE_PROJECT_DIR" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -q --allow-empty -m "root"
+for f in a b c d e f; do printf 'x\n' > "$CLAUDE_PROJECT_DIR/$f.txt"; git -C "$CLAUDE_PROJECT_DIR" add "$f.txt"; git -C "$CLAUDE_PROJECT_DIR" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -q -m "$f"; done
+printf 'y\n' > "$CLAUDE_PROJECT_DIR/e.txt"
+printf 'z\n' > "$CLAUDE_PROJECT_DIR/new.txt"
+OUTR="$(hook anchor.sh "$(sess_json resume)")"
+ctxr="$(printf '%s' "$OUTR" | "$QS_PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])')"
+ctxr="${ctxr//$'\r'/}"
+section="$(printf '%s\n' "$ctxr" | sed -n '/<recent-files>/,/<\/recent-files>/p')"
+expect_contains "recent-files lists an uncommitted modified file" "e.txt" "$section"
+expect_contains "recent-files lists an uncommitted new file" "new.txt" "$section"
+expect_contains "recent-files lists the newest commit's file" "f.txt" "$section"
+case "$section" in *"a.txt"*|*"b.txt"*) bad "recent-files omits files older than the last three commits";; *) ok "recent-files omits files older than the last three commits";; esac
+[ "$(printf '%s\n' "$section" | grep -c '\.txt')" -le 5 ] && ok "recent-files holds at most five paths" || bad "recent-files holds at most five paths: $section"
+[ "$(printf '%s\n' "$section" | grep -c '^e\.txt$')" = "1" ] && ok "recent-files lists a path once" || bad "recent-files lists a path once: $section"
+expect_contains "closing instruction names recent-files" "Read <handoff> and <recent-files>" "$ctxr"
+rm -rf "$CLAUDE_PROJECT_DIR/.git" "$CLAUDE_PROJECT_DIR"/*.txt
 
 # 4. source resume behaves like compact
 OUT2="$(hook anchor.sh "$(sess_json resume)")"; rc=$?
