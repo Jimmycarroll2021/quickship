@@ -1,10 +1,22 @@
 # Quickship release evidence
 
-## v0.3.1 candidate
+## v0.3.1
 
-Status: patch implementation is under verification. This document will record the final source revision,
-complete local gate, exact-commit CI and fresh private synthetic live acceptance before a readiness PR is opened.
-The existing v0.3.0 release remains unchanged.
+Released 2026-10-09. Cut from main commit `104cc9a93d9877e1fec872643d76e6b571e174e6`, the merge of the
+last of seven pull requests: #18, #21, #20, #22, #23, #24 and #25. Each was merged on CI that passed on its
+own final head commit, with main's changes already included.
+
+- **CI on the cut commit:** all four Windows/Ubuntu Python 3.10/3.12 self-test jobs and `ci-required` passed.
+  [Main push CI run](https://github.com/Jimmycarroll2021/quickship/actions/runs/37880276238).
+- **Local gate on the cut commit** (Linux, Python 3.11): `bash scripts/gate.sh` printed `gate: PASS`
+  (lint `python -m compileall -q scripts`, test `bash tests/run.sh`, build skipped for stdlib scripts).
+- **Local preflight on the cut commit:** `python scripts/preflight.py` exited 2 in the release environment
+  because no GitHub CLI was installed and the harness repository has no `BRIEF.yaml`. It reported
+  `sandbox.available: false` (no `bubblewrap`/`socat`). These are properties of the release machine, not of
+  the source; preflight checks a mission run, which a release does not perform.
+
+**Live cloud acceptance was not run for 0.3.1.** No fresh private synthetic live acceptance was run either; the
+live results below are historical v0.3.0 evidence.
 
 The patch addresses cancellation during final verification/publication, unresolved docs-profile bases,
 nested self-test concurrency and retained test evidence. The default project timeout and mission budgets
@@ -77,4 +89,4 @@ Project scripts, dependency installation and indirect code execution remain trus
 
 Live acceptance covers a small Node mission and documentation missions on Windows. Ubuntu compatibility has automated evidence. macOS, cloud execution, Python application delivery, every language ecosystem and live overseer operation were not exercised by these acceptance runs; overseer behavior has regression coverage. No production-readiness claim is made for arbitrary projects.
 
-v0.3.0 is published. Any v0.3.1 readiness PR requires human review; merge and release publication are separate actions.
+v0.3.0 and v0.3.1 are published. Merge and release publication are separate actions.

@@ -4,8 +4,25 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-09
+
 ### Added
 
+- `QS_TEST_LOG_DIR` retains separate per-suite output, exit codes and job counts for local acceptance evidence.
+- `mission.requirements`: an optional list of stable `REQ-xxx` identifiers from `docs/PRD.md`. `brief.py`
+  validates it, the strategist writes it into every mission, and the controller renders it into the PR's
+  Traceability section instead of the "not declared" placeholder.
+- `docs/PRD_TEMPLATE.md`, installed with the harness, gives the strategist's PRD a fixed shape with
+  per-requirement acceptance criteria and a mission-to-requirement table.
+- The controller renders the PR body from `.github/pull_request_template.md` with the mission branch,
+  final commit, reviewable diff size and the lead's report (shipped on main after 0.3.0).
+- Agent shell commands run inside Claude Code's OS sandbox where the platform supports it: `.claude/settings.json`
+  enables it with no unsandboxed retry and a network allowlist of GitHub and the npm and PyPI registries.
+  `preflight.py` reports `sandbox.available` and why not on native Windows or without `bubblewrap`/`socat`.
+- Controller runs allowlist the shell: an executable runs only if it is in the base set or named by a brief
+  `quality` command or `test` criterion. Leading `NAME=value` assignments no longer hide a command from the rules.
+- Preflight refuses a `quality.profile: docs` brief that has neither `mission.base` nor a resolvable
+  `origin/HEAD`, instead of the gate failing after the model has run.
 - `ledger.py handoff "<done>" --next "<next>" [--note ...]` appends a dated prose note to `docs/ledgers/handoff.md`.
   The lead writes one after every merge or failure. On a compaction or resume the anchor hook injects the newest
   note and the last five progress events, and tells the lead that the files outrank its memory, to run the gate
@@ -49,36 +66,6 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ### Fixed
 
-- Once a budget is exhausted the lead may still run a single `git add`, `git commit` or `ledger.py handoff`
-  (no chaining), so finished work is committed and a note left instead of being lost to the cut-off. Nothing
-  else is allowed, as before.
-- The overseer's `force_replan` flag now has an effect: the lead loop names it, and `ledger.py replan` deletes it,
-  because the lead may not remove `.claude/state` files itself. The runbook described this behaviour; nothing
-  implemented it.
-
-## [0.3.1] - Unreleased
-
-### Added
-
-- `QS_TEST_LOG_DIR` retains separate per-suite output, exit codes and job counts for local acceptance evidence.
-
-- `mission.requirements`: an optional list of stable `REQ-xxx` identifiers from `docs/PRD.md`. `brief.py`
-  validates it, the strategist writes it into every mission, and the controller renders it into the PR's
-  Traceability section instead of the "not declared" placeholder.
-- `docs/PRD_TEMPLATE.md`, installed with the harness, gives the strategist's PRD a fixed shape with
-  per-requirement acceptance criteria and a mission-to-requirement table.
-- The controller renders the PR body from `.github/pull_request_template.md` with the mission branch,
-  final commit, reviewable diff size and the lead's report (shipped on main after 0.3.0).
-- Agent shell commands run inside Claude Code's OS sandbox where the platform supports it: `.claude/settings.json`
-  enables it with no unsandboxed retry and a network allowlist of GitHub and the npm and PyPI registries.
-  `preflight.py` reports `sandbox.available` and why not on native Windows or without `bubblewrap`/`socat`.
-- Controller runs allowlist the shell: an executable runs only if it is in the base set or named by a brief
-  `quality` command or `test` criterion. Leading `NAME=value` assignments no longer hide a command from the rules.
-- Preflight refuses a `quality.profile: docs` brief that has neither `mission.base` nor a resolvable
-  `origin/HEAD`, instead of the gate failing after the model has run.
-
-### Fixed
-
 - Operator cancellation is rechecked during final verification and before publication commands. It records non-retryable SAFE_STOP and preserves receipts for completed publication side effects.
 - Documentation-only quality checks require a resolvable mission base or `origin/HEAD`; a missing base no longer turns an empty working-tree diff into a pass.
 - Installed-copy tests inherit the outer job limit. Windows defaults to one job, other platforms to at most four; invalid overrides fail before dispatch.
@@ -92,6 +79,12 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
   clean-tree check in any project without a global ignore for it.
 - The README's Quickstart commits every file `init.sh` installs; it had left the PR and PRD templates untracked,
   which preflight refuses.
+- Once a budget is exhausted the lead may still run a single `git add`, `git commit` or `ledger.py handoff`
+  (no chaining), so finished work is committed and a note left instead of being lost to the cut-off. Nothing
+  else is allowed, as before.
+- The overseer's `force_replan` flag now has an effect: the lead loop names it, and `ledger.py replan` deletes it,
+  because the lead may not remove `.claude/state` files itself. The runbook described this behaviour; nothing
+  implemented it.
 
 ## [0.3.0] - 2026-10-03
 
@@ -178,6 +171,7 @@ First public release: a Claude Code harness that takes one Mission Brief and shi
 
 Seven unattended missions ran with this release, including a real application and a kill-and-resume run. The figures, recomputed in 0.1.1 from the full transcripts, are in the README under "Track record".
 
+[0.3.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.1.1
