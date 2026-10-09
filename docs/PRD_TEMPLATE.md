@@ -27,6 +27,16 @@ renders them into each PR's Traceability section. -->
 -
 
 
+## Product vision
+
+<!-- The whole product if the idea works: five to eight capabilities, one line each. Ambitious. The MVP below is
+cut from this map and later missions draw on it; nothing here is built unless it also appears in MVP scope. -->
+
+-
+-
+-
+
+
 ## MVP scope
 
 -

@@ -59,7 +59,8 @@ Nobody answers questions. Choose a default and record it, skip a block, or submi
 2. Plan: `python scripts/ledger.py tier plan`; register a planning step and dispatch planner
    with the mandatory bind command. Then `python scripts/ledger.py tier act` separately.
 3. Budget: run `python scripts/budget.py` before dispatch. When it reports `near` (75% of any budget,
-   also shown as `near=` on the BUDGET line after each tool call) stop new work: finish the current task,
+   also shown as `near=` on the BUDGET line, printed every tenth tool call and whenever a budget is near)
+   stop new work: finish the current task,
    commit, write a handoff note and keep the rest for review and the report. Once a budget is exhausted
    only commits, the handoff note, RESULT and REPORT are allowed. Exhaustion means DONE_PARTIAL; cancel
    means SAFE_STOP.
