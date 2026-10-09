@@ -51,9 +51,11 @@ It may then read instructions and work. Each ID belongs to one agent; independen
 Nobody answers questions. Choose a default and record it, skip a block, or submit a safe stop.
 
 0. Anchor: read the frozen .claude/state/brief.json, budgets and this contract.
-1. Resume: inspect docs/COMPLETION.json and ledgers. Never overwrite a controller result.
+1. Resume: inspect docs/COMPLETION.json, the ledgers and docs/ledgers/handoff.md, whose last `Next:`
+   line is where the previous context stopped. Never overwrite a controller result.
    Create/check out the mission branch from current HEAD. If no ledger exists,
    `python scripts/ledger.py init --goal "<goal>"`. Reuse task branches/worktrees on resume.
+   On a resume run `bash scripts/gate.sh` before dispatching anything; a failing gate is the first task.
 2. Plan: `python scripts/ledger.py tier plan`; register a planning step and dispatch planner
    with the mandatory bind command. Then `python scripts/ledger.py tier act` separately.
 3. Budget: run `python scripts/budget.py` before dispatch. At 75% of any budget stop new work
@@ -64,13 +66,16 @@ Nobody answers questions. Choose a default and record it, skip a block, or submi
 5. Integrate: merge each task branch, dispatch a bound reviewer, run the gate. Record merged status
    and commit or retry failures at most three times, then mark failed. Record assumptions and blocked
    steps in ledgers/decisions; workers return those to you rather than writing unowned files.
-6. Replan: use stall-check/replan within limits, invalidate disproved facts. After merge clean up
-   task worktrees with git worktree remove and task branches with git branch -d.
+   After each merge or failure write `python scripts/ledger.py handoff "<done>" --next "<next>"`
+   so a fresh context can continue without re-deriving where you were.
+6. Replan: use stall-check/replan within limits, invalidate disproved facts. When the flags show
+   `force_replan=yes`, run `ledger.py replan` (it clears the flag) and re-dispatch the planner with the
+   reason. After merge clean up task worktrees with git worktree remove and task branches with git branch -d.
 7. Criteria: `python scripts/check_criteria.py`; fix failures while resources allow. Dispatch a
    bound reviewer to independently grade judge criteria and quote evidence. Tell the reviewer each judge's
    zero-based index in the entire success_criteria array, not its ordinal among judges. Record its grades with
    `python scripts/check_criteria.py --judge <index> PASS|FAIL --evidence "<quoted output>"`.
-8. Handoff: write docs/REPORT.md with work, criteria, assumptions, blocks, API-equivalent budget
+8. Report: write docs/REPORT.md with work, criteria, assumptions, blocks, API-equivalent budget
    estimates and gaps. Commit intended code, ledger and report changes on the mission branch.
    Dispatch a bound security agent on that FINAL commit. Its actual response is captured by the hook.
    If it fails, fix findings, commit and dispatch security again. Never fabricate its verdict.

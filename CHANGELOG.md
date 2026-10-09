@@ -2,6 +2,25 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
+## [Unreleased]
+
+### Added
+
+- `ledger.py handoff "<done>" --next "<next>" [--note ...]` appends a dated prose note to `docs/ledgers/handoff.md`.
+  The lead writes one after every merge or failure. On a compaction or resume the anchor hook injects the newest
+  note and the last five progress events, and tells the lead that the files outrank its memory, to run the gate
+  before dispatching anything new, and to continue from the note's `Next:` line. Lesson from Anthropic's
+  long-running-agent harness work: compaction is not the continuity mechanism; a progress note, structured state
+  and git are.
+- `docs/design/lessons.md` records which published harness lessons quickship adopts, already has, or declines,
+  and why.
+
+### Fixed
+
+- The overseer's `force_replan` flag now has an effect: the lead loop names it, and `ledger.py replan` deletes it,
+  because the lead may not remove `.claude/state` files itself. The runbook described this behaviour; nothing
+  implemented it.
+
 ## [0.3.1] - Unreleased
 
 ### Added
