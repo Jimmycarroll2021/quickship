@@ -41,9 +41,19 @@ The guard binds the hook's agent_id to that registered step before allowing owne
 current_step file is a compatibility view only, never the authority for schema-3 hooks.
 Publishing reservations are run-wide, persisted before external calls, and reconciled against GitHub on resume.
 Unknown shell constructs, native PowerShell, external connectors, protected writes and agent-side publishing
-are refused. These are cooperative safeguards, not a sandbox for hostile project code/dependencies.
+are refused. In a controller run the shell is also allowlisted: an executable runs only if it is in
+`policy.BASE_COMMANDS` (inspection, the gate and state CLIs, git and gh, and the package managers and test
+runners the gate drives) or is the first word of a brief `quality` command or a `test` criterion; anything
+else is denied with `not in this run's allowlist`. Leading `NAME=value` assignments are stripped before every
+rule sees a command. Agent shell commands also run inside Claude Code's OS sandbox (`sandbox` in
+`.claude/settings.json`: enabled, no unsandboxed retry, network limited to GitHub and the npm and PyPI
+registries) on macOS, Linux and WSL2 when `bubblewrap` and `socat` are installed; native Windows runs them
+unsandboxed and `preflight.py` reports which under `sandbox`. The hooks remain cooperative safeguards, not a
+sandbox for hostile project code/dependencies.
 Preflight is read-only (`python scripts/preflight.py`), supports Python 3.10+, Git Bash/Linux bash 4+,
 and Claude Code >=2.1.288. Old active runtime state is preserved and requires explicit migration/restart.
+A brief with `quality.profile: docs` and no `mission.base` fails preflight unless `origin/HEAD` resolves,
+because the docs profile diffs against it and would otherwise fail the gate only after the model has run.
 
 Every script and hook in this repo builds to these contracts. They are the interface between the lead loop in `CLAUDE.md`, the hooks in `scripts/hooks/`, the CLIs in `scripts/`, and the tests in `tests/`. Change a contract here first, then the code.
 

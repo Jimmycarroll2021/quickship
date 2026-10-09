@@ -14,6 +14,9 @@ Preflight checks versions, authentication, the brief and its quality configurati
 - Claude Code 2.1.288 or newer.
 - Git, Python 3.10 or newer, `gh`, and bash 4 or newer. On Windows, use Git Bash or the `.cmd` wrappers.
 - A git author identity, and an `origin` that points at github.com.
+- Optional: `bubblewrap` and `socat` on Linux and WSL2, so agent shell commands run inside Claude Code's sandbox. Preflight prints `sandbox.available` and the reason when it is off. Native Windows runs unsandboxed.
+
+A brief with `quality.profile: docs` needs either `mission.base` or a resolvable `origin/HEAD` (push the default branch, then `git remote set-head origin -a`); preflight refuses otherwise, because the gate would only find out after the model had run.
 
 For subscription-only work, check that paid extra usage is disabled. quickship never changes billing.
 

@@ -13,6 +13,13 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
   per-requirement acceptance criteria and a mission-to-requirement table.
 - The controller renders the PR body from `.github/pull_request_template.md` with the mission branch,
   final commit, reviewable diff size and the lead's report (shipped on main after 0.3.0).
+- Agent shell commands run inside Claude Code's OS sandbox where the platform supports it: `.claude/settings.json`
+  enables it with no unsandboxed retry and a network allowlist of GitHub and the npm and PyPI registries.
+  `preflight.py` reports `sandbox.available` and why not on native Windows or without `bubblewrap`/`socat`.
+- Controller runs allowlist the shell: an executable runs only if it is in the base set or named by a brief
+  `quality` command or `test` criterion. Leading `NAME=value` assignments no longer hide a command from the rules.
+- Preflight refuses a `quality.profile: docs` brief that has neither `mission.base` nor a resolvable
+  `origin/HEAD`, instead of the gate failing after the model has run.
 
 ### Fixed
 

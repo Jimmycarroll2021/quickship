@@ -108,6 +108,49 @@ def git_args(tokens):
     return args
 
 
+# Executables an agent may run in a controller run without the brief naming them: inspection, the gate and the
+# state CLIs, git and gh (their subcommands are checked below), and the package managers and test runners the
+# gate itself drives. The brief's quality commands and test criteria extend this per run; nothing else runs.
+BASE_COMMANDS = frozenset(
+    "ls cat head tail wc grep rg find pwd echo printf tr sort uniq cut awk sed diff true false test [ date sleep "
+    "mkdir touch cp mv rm chmod basename dirname env cd tee "
+    "git gh bash sh python python3 uv pip pip3 pytest ruff node npm npx pnpm yarn bun make cargo go".split())
+
+
+def strip_assignments(tokens):
+    # `FOO=1 cmd ...` runs cmd; the assignments are not the command.
+    i = 0
+    while i < len(tokens) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[i], re.S):
+        i += 1
+    return tokens[i:]
+
+
+def executable_of(tokens):
+    return tokens[0].replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
+
+
+def allowed_executables(brief):
+    """BASE_COMMANDS plus every executable the brief's quality commands and test criteria name."""
+    allowed = set(BASE_COMMANDS)
+    commands = []
+    quality = brief.get("quality") if isinstance(brief, dict) else None
+    if isinstance(quality, dict):
+        commands += [v for k, v in quality.items() if k in ("lint", "test", "build") and isinstance(v, str)]
+    for c in brief.get("success_criteria", []) if isinstance(brief, dict) else []:
+        if isinstance(c, dict) and c.get("kind") == "test" and isinstance(c.get("cmd"), str):
+            commands.append(c["cmd"])
+    for command in commands:
+        try:
+            segments = argv_segments(command)
+        except Denied:
+            continue
+        for tokens in segments:
+            tokens = strip_assignments(tokens)
+            if tokens:
+                allowed.add(executable_of(tokens))
+    return allowed
+
+
 def authorize(command, brief):
     # Only the controller invokes this, using shell=False for the actual call.
     perms = brief["permissions"]["irreversible"]
@@ -231,10 +274,12 @@ def check(event):
             return
         if active and event.get("agent_id") and not bound_step(event):
             raise Denied("subagent must step-bind before work")
+        allowed = allowed_executables(brief) if active else None
         for ts in segs:
+            ts = strip_assignments(ts)
             if not ts:
                 continue
-            executable = ts[0].replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
+            executable = executable_of(ts)
             if executable in ("powershell", "pwsh", "cmd"):
                 raise Denied("alternate shell disabled; use Git Bash")
             if executable == "git":
@@ -333,6 +378,11 @@ def check(event):
                     expected = runtime.root() / ".claude/worktrees" / step["slug"]
                     if resolve_path(".", cwd) != expected.resolve():
                         raise Denied("worker must use git -C for its assigned worktree")
+            # Last, so a more specific reason above wins: a controller run only runs what the base set or the
+            # brief names. Fail closed on anything else rather than enumerate every dangerous tool.
+            if allowed is not None and executable not in allowed:
+                raise Denied("command '" + executable + "' is not in this run's allowlist; add it to the brief's "
+                             "quality commands or a test criterion")
         return
     if tool in ("Write", "Edit", "MultiEdit", "Read"):
         path = inp["file_path"]

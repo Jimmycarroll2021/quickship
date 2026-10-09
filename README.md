@@ -73,6 +73,7 @@ DONE
 - Claude Code 2.1.288 or newer, logged in.
 - An authenticated [`gh`](https://cli.github.com).
 - A git author identity, and an `origin` that points at github.com.
+- For the shell sandbox on Linux or WSL2, `bubblewrap` and `socat` (`apt-get install bubblewrap socat`). macOS needs nothing extra. Without them the run still works, unsandboxed, and preflight says so.
 
 On Windows, bash comes from Git Bash. macOS ships bash 3.2, so install a newer one with `brew install bash`. macOS and cloud sessions aren't release-verified.
 
@@ -213,7 +214,9 @@ What the agents will never do:
 - Let one step both read untrusted web content and push or open a pull request. This is the [lethal trifecta](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) rule.
 - Run past a budget. Once a limit is reached, only the result and the report can be written.
 
-These controls are cooperative. Project scripts, test runners and dependency installers can still cause side effects outside them. A hostile agent or project needs OS isolation, restricted credentials and a network policy, which this release doesn't provide.
+- Run a command outside the run's allowlist. In a controller run the shell is restricted to a base set (inspection, git and gh, the package managers and test runners the gate drives) plus whatever the brief's `quality` commands and `test` criteria name. Anything else is refused by name, so a new tool is a brief change, not a surprise.
+
+Agent shell commands also run inside Claude Code's own OS sandbox on macOS, Linux and WSL2: writes stay inside the project, the network is limited to GitHub and the npm and PyPI registries, and the unsandboxed retry is disabled. Native Windows runs commands unsandboxed, and `preflight.py` reports which you have under `sandbox`. The hooks themselves remain cooperative: project scripts, test runners and dependency installers run with whatever the sandbox allows, and a hostile project still needs isolation and restricted credentials beyond this.
 
 ## Every run ends in exactly one state
 
