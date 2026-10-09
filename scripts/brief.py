@@ -234,6 +234,11 @@ def validate_structure(raw):
     deliverables = mission.get("deliverables")
     if not isinstance(deliverables, list) or not deliverables or any(not isinstance(p, str) or not p.strip() for p in deliverables):
         raise BriefError("mission.deliverables")
+    requirements = mission.get("requirements", [])
+    if not isinstance(requirements, list) or any(
+            not isinstance(req, str) or not re.fullmatch(r"REQ-[0-9]{3,}", req)
+            for req in requirements):
+        raise BriefError("mission.requirements", "mission.requirements must be a list of REQ-xxx identifiers")
     # optional: the branch a chained mission starts from and opens its PR against (set by scripts/program.sh)
     base = mission.get("base")
     if base is not None and (not isinstance(base, str) or not re.match(r"^[A-Za-z0-9._/-]+$", base)):
@@ -322,7 +327,11 @@ def validate_structure(raw):
     return {
         "quality": dict({"profile": "code"}, **quality),
         "maintenance": raw.get("maintenance", False),
-        "mission": dict({"goal": goal, "deliverables": list(deliverables)}, **({"base": base} if base else {})),
+        "mission": dict(
+            {"goal": goal, "deliverables": list(deliverables)},
+            **({"requirements": list(requirements)} if requirements else {}),
+            **({"base": base} if base else {}),
+        ),
         "success_criteria": criteria,
         "budgets": budgets,
         "permissions": {"irreversible": {"default": default, "allow": allow}},

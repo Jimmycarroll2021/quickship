@@ -2,6 +2,30 @@
 
 All notable changes to quickship are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The current version is in `VERSION`.
 
+## [Unreleased]
+
+### Added
+
+- `mission.requirements`: an optional list of stable `REQ-xxx` identifiers from `docs/PRD.md`. `brief.py`
+  validates it, the strategist writes it into every mission, and the controller renders it into the PR's
+  Traceability section instead of the "not declared" placeholder.
+- `docs/PRD_TEMPLATE.md`, installed with the harness, gives the strategist's PRD a fixed shape with
+  per-requirement acceptance criteria and a mission-to-requirement table.
+- The controller renders the PR body from `.github/pull_request_template.md` with the mission branch,
+  final commit, reviewable diff size and the lead's report (shipped on main after 0.3.0).
+
+### Fixed
+
+- The self-tests clear an inherited `CLAUDE_PROJECT_DIR`. The Stop hook's gate runs the suite with that
+  variable set, which pointed every fixture at the real repo's `.claude/state` and failed the gate on every
+  stop in this repo while CI stayed green.
+- `scripts/init.sh` names the "PR sizing and evidence" section among those to merge into an existing CLAUDE.md.
+- `scripts/init.sh` adds `__pycache__/` to the project's `.gitignore`. The harness's own Python imports wrote
+  bytecode under `scripts/__pycache__/` as untracked files, which failed the docs profile and the controller's
+  clean-tree check in any project without a global ignore for it.
+- The README's Quickstart commits every file `init.sh` installs; it had left the PR and PRD templates untracked,
+  which preflight refuses.
+
 ## [0.3.0] - 2026-10-03
 
 ### Changed

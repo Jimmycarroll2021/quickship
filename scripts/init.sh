@@ -65,7 +65,7 @@ for f in "${files[@]}"; do
   [ "${TSHA[$f]}" = "${SSHA[$f]}" ] && continue
   untouched=0; [ "$upgrade" = 1 ] && ! grep -qxF "$f" "$T/.quickship/unmanaged" && [ "${TSHA[$f]}" = "${REC[$f]:-}" ] && untouched=1
   if [ "$f" = CLAUDE.md ] && [ "$untouched" = 0 ]; then
-    echo "notice: CLAUDE.md exists; merge the \"Hard rules\" and \"Lead loop\" sections from $SRC/CLAUDE.md"; skipped=$((skipped+1))
+    echo "notice: CLAUDE.md exists; merge the \"PR sizing and evidence\", \"Hard rules\" and \"Lead loop\" sections from $SRC/CLAUDE.md"; skipped=$((skipped+1))
   elif [ "$force" = 1 ]; then install "$f" && echo "overwrite: $f"; changed=$((changed+1))
   elif [ "$untouched" = 1 ]; then install "$f" && echo "upgrade: $f"; changed=$((changed+1))
   else echo "skip (modified): $f"; skipped=$((skipped+1)); fi
@@ -77,7 +77,7 @@ done
 
 # .gitignore entries the harness relies on
 gi="$T/.gitignore"
-for line in ".claude/worktrees/" ".claude/state/" "work/_untrusted/"; do
+for line in ".claude/worktrees/" ".claude/state/" "work/_untrusted/" "__pycache__/"; do
   grep -qxF -- "$line" "$gi" 2>/dev/null && continue
   [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
   echo "$line" >> "$gi"; echo "add: .gitignore <- $line"; changed=$((changed+1))

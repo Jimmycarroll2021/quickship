@@ -37,6 +37,7 @@ Treat each mission as one independently reviewable PR. Prefer one logical outcom
 
 - **Mission 01** sets up the skeleton: the manifest, the source layout, the stack's test runner and linter wired so the gate has real tests to run, and one passing smoke test of real behaviour. For a web UI it also installs Playwright with one end-to-end test.
 - **Every mission** has explicit `quality` commands for the planned stack, including skeleton missions before a manifest exists. Use `quality.profile: docs` only for documentation changes. Node missions specify lint/test/build commands; Python missions specify lint scoped to application files, pytest and build, or an explicit build skip reason when no artifact is required. Missing checks are failures, never implicit skips.
+- **Every mission** has a `requirements` list naming the `REQ-xxx` identifiers from the PRD that it advances. Across the mission set every MVP requirement is covered, and no mission cites an identifier the PRD does not define.
 - **Every mission** has a focused `goal` (one or two sentences naming the user-visible outcome), `deliverables` (file or directory paths), and `success_criteria` with:
   - at least one `test` criterion whose `cmd` is a real command that proves the behaviour, such as `uv run pytest -q tests/test_import.py` or `npm test`, never only that a file exists;
   - exactly one `judge` criterion with a `rubric` a reviewer can grade from evidence;
@@ -59,6 +60,8 @@ A complete mission, for shape:
 ```yaml
 mission:
   goal: "Set up the cafeprep Python package with a CLI entry point, pytest and ruff, and a smoke test that parses one sample sales CSV"
+  requirements:
+    - REQ-001
   deliverables:
     - pyproject.toml
     - src/cafeprep/
