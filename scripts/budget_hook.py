@@ -2,9 +2,13 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import runtime
+
+WRAP_UP = re.compile(r"^\s*(?:git\s+(?:-C\s+\S+\s+)?(?:add|commit)\s|python3?\s+scripts/ledger\.py\s+handoff\s)")
+CHAIN = re.compile(r"[;&|`\n]|\$\(")
 
 
 def handle(event):
@@ -29,6 +33,10 @@ def handle(event):
         return 0
     parts = str(inp.get("file_path", "")).replace("\\", "/").split("/")
     final = tool in ("Write", "Edit") and parts[-2:] in (["docs", "RESULT.json"], ["docs", "REPORT.md"])
+    # Once a budget is exhausted the lead may still save what it has: commit, and leave a handoff note. Nothing
+    # else, and no chaining, so an exhausted run cannot smuggle work past the limit on the back of a commit.
+    final = final or (tool == "Bash" and bool(WRAP_UP.match(str(inp.get("command", ""))))
+                      and not CHAIN.search(str(inp.get("command", ""))))
     reads = tool in ("Read", "Glob", "Grep")
     # In v3 count permitted attempts at PreToolUse, including subsequent tool failures.
     if (active and e == "PreToolUse") or (not active and e == "PostToolUse"):
@@ -72,6 +80,9 @@ def handle(event):
         ctx = "BUDGET tokens=%d/%s cost=%.2f/%s min=%.1f/%s steps=%d/%s" % (
             b["tokens"], limits["tokens"], b["cost_usd"], limits["cost_usd"],
             b["elapsed_min"], limits["wall_clock_min"], b["steps"], limits["steps"])
+        if b.get("near"):
+            ctx += " near=%s: stop dispatching; finish the current task, commit, write a handoff note, go to synthesis" % (
+                ",".join(b["near"]))
         print(json.dumps({"hookSpecificOutput": {"hookEventName": e, "additionalContext": ctx}}))
     return 0
 

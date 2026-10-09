@@ -15,8 +15,19 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 - `docs/design/lessons.md` records which published harness lessons quickship adopts, already has, or declines,
   and why.
 
+### Changed
+
+- One wrap-up number. `budget.py` flags `near` at 75% of any budget (was 85%), which is what `CLAUDE.md` step 3
+  and the controller's "reserve 25%" prompt already said. The BUDGET line after every tool call now carries
+  `near=<names>` with the instruction, so the lead sees it without running `budget.py`.
+- The lead's fix-and-re-review retries and the security fix loop are bounded by `budgets.critic_rounds`, which
+  `brief.py` validated but nothing read. The lead loop said "three times".
+
 ### Fixed
 
+- Once a budget is exhausted the lead may still run a single `git add`, `git commit` or `ledger.py handoff`
+  (no chaining), so finished work is committed and a note left instead of being lost to the cut-off. Nothing
+  else is allowed, as before.
 - The overseer's `force_replan` flag now has an effect: the lead loop names it, and `ledger.py replan` deletes it,
   because the lead may not remove `.claude/state` files itself. The runbook described this behaviour; nothing
   implemented it.

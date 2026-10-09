@@ -31,6 +31,9 @@ MAX_BYTES = None
 # USD per million tokens. Cache read = 10% of input; cache creation = 125% of input.
 RATES = {"opus": (15.0, 75.0), "sonnet": (3.0, 15.0), "haiku": (1.0, 5.0)}
 DIMS = (("tokens", "tokens"), ("cost_usd", "cost_usd"), ("elapsed_min", "wall_clock_min"), ("steps", "steps"))
+# The single wrap-up threshold: CLAUDE.md step 3, the controller's "reserve 25%" prompt and the BUDGET hook line all
+# mean this number. Past it the lead stops new work and keeps the rest for review, handoff and the report.
+NEAR_FRACTION = 0.75
 
 
 def state_dir():
@@ -225,11 +228,11 @@ def main():
     limits = {lim: budgets.get(lim, 0) for _, lim in DIMS}
     exhausted = [lim for key, lim in DIMS
                  if isinstance(limits[lim], (int, float)) and limits[lim] > 0 and vals[key] >= limits[lim]]
-    # near: at or past 85% of a limit but not over it; the lead's cue to finish the current task and go to synthesis
-    # (push, PR, report) while the budget hook still lets commands through
+    # near: at or past NEAR_FRACTION of a limit but not over it; the lead's one cue to stop dispatching, finish the
+    # current task, commit, write a handoff note and go to synthesis while the budget hook still lets commands through
     near = [lim for key, lim in DIMS
             if isinstance(limits[lim], (int, float)) and limits[lim] > 0
-            and vals[key] < limits[lim] and vals[key] >= 0.85 * limits[lim]]
+            and vals[key] < limits[lim] and vals[key] >= NEAR_FRACTION * limits[lim]]
     if a.exhausted_only:
         if exhausted:
             print(",".join(exhausted))

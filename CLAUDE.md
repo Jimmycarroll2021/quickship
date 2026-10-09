@@ -58,13 +58,16 @@ Nobody answers questions. Choose a default and record it, skip a block, or submi
    On a resume run `bash scripts/gate.sh` before dispatching anything; a failing gate is the first task.
 2. Plan: `python scripts/ledger.py tier plan`; register a planning step and dispatch planner
    with the mandatory bind command. Then `python scripts/ledger.py tier act` separately.
-3. Budget: run `python scripts/budget.py` before dispatch. At 75% of any budget stop new work
-   and reserve the rest for review/report. Exhaustion means DONE_PARTIAL; cancel means SAFE_STOP.
+3. Budget: run `python scripts/budget.py` before dispatch. When it reports `near` (75% of any budget,
+   also shown as `near=` on the BUDGET line after each tool call) stop new work: finish the current task,
+   commit, write a handoff note and keep the rest for review and the report. Once a budget is exhausted
+   only commits, the handoff note, RESULT and REPORT are allowed. Exhaustion means DONE_PARTIAL; cancel
+   means SAFE_STOP.
 4. Dispatch: register a pending task's step, mark dispatched, append the event and create
    .claude/worktrees/<slug> on <mission-branch>--<slug> only if absent. Give worker its owned files,
    exact worktree and bind ID. Research gets its own distinct registered step and findings path.
 5. Integrate: merge each task branch, dispatch a bound reviewer, run the gate. Record merged status
-   and commit or retry failures at most three times, then mark failed. Record assumptions and blocked
+   and commit or retry failures at most budgets.critic_rounds times, then mark failed. Record assumptions and blocked
    steps in ledgers/decisions; workers return those to you rather than writing unowned files.
    After each merge or failure write `python scripts/ledger.py handoff "<done>" --next "<next>"`
    so a fresh context can continue without re-deriving where you were.
@@ -78,7 +81,8 @@ Nobody answers questions. Choose a default and record it, skip a block, or submi
 8. Report: write docs/REPORT.md with work, criteria, assumptions, blocks, API-equivalent budget
    estimates and gaps. Commit intended code, ledger and report changes on the mission branch.
    Dispatch a bound security agent on that FINAL commit. Its actual response is captured by the hook.
-   If it fails, fix findings, commit and dispatch security again. Never fabricate its verdict.
+   If it fails, fix findings, commit and dispatch security again, within the same critic_rounds bound.
+   Never fabricate its verdict.
 9. Submit: write docs/RESULT.json as {"state":"READY","reason":"implementation and reviews complete"}.
    Alternatives are DONE_PARTIAL, SAFE_STOP or HALT with a reason. RESULT may remain untracked.
    Never write RUN_STATE or COMPLETION.json, never push or open a PR. Stop after submitting.
