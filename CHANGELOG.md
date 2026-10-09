@@ -24,6 +24,20 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
   the frontend-design skill.
 - The sandbox network allowlist admits Playwright's browser download hosts, without which a UI mission's
   Playwright criterion could not install a browser inside the sandbox.
+- The planner is ambitious at product altitude and precise about done. The PRD gains a Product vision section
+  (five to eight capabilities the MVP is cut from); the strategist stays at product context and high-level
+  design and leaves the implementation path to the workers, because a granular decision in the spec is copied
+  into every mission. Each planned task's `done when` is now a command with its expected exit or a criterion
+  index, never prose, and the reviewer grades every merged task against it. From Anthropic's harness design
+  post: without a planner the builder under-scoped, and agreeing testable "done" before code was what kept it
+  building the right thing.
+- The anchor pack carries `<recent-files>`: the five paths the previous context touched last (uncommitted
+  changes, then the last three commits), with the instruction to read the handoff and those files before
+  anything else and fetch the rest as needed. From Anthropic's context engineering post: a fresh window gets the
+  summary plus the most recently accessed files, and everything else just in time.
+- The BUDGET readout after every tool call now prints every tenth step and whenever a budget is near or
+  exhausted. A readout that has not changed is not signal, and over a long mission the old behaviour cost
+  thousands of tokens of identical lines.
 
 ### Changed
 
