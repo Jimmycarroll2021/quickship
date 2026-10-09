@@ -3,7 +3,9 @@
 ## What this is
 A cooperative Claude Code harness for trusted development projects. The Python controller
 owns the deadline, frozen policy, final verification, publishing and authoritative RUN_STATE.
-Hooks are safeguards, not an OS sandbox. See docs/design/contracts.md for interfaces.
+Hooks are safeguards, not an OS sandbox; Claude Code's own Bash sandbox wraps agent shell commands where the
+platform supports it. A controller run executes only a base command set plus the brief's quality and test
+commands. See docs/design/contracts.md for interfaces.
 
 ## Commands
 `bash scripts/gate.sh` runs the gate. Missing required checks fail. A brief may supply

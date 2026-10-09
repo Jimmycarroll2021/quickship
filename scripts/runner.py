@@ -244,7 +244,9 @@ def render_pr_body(root, brief, branch, base, head, command=None):
     body = body.replace("`<reviewable-lines>`", "`" + str(scope["reviewable_lines"]) + "`")
     body = body.replace("`<file-count>`", "`" + str(scope["files"]) + "`")
     body = body.replace("Commit: `<SHA>`", "Commit: `" + head + "`")
+    requirements = brief["mission"].get("requirements") or []
     body = body.replace("- `<REQ-xxx>`",
+                        "\n".join("- `" + req + "`" for req in requirements) if requirements else
                         "- Not declared in the mission brief; use the stable `REQ-xxx` mapping in `docs/PRD.md` when present.")
     problem = "<!-- What failed, was missing, or needed to change?\nDescribe how the problem can be reproduced or observed. -->"
     body = body.replace(problem, "Mission goal: " + brief["mission"]["goal"], 1)

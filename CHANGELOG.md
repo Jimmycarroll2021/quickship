@@ -4,16 +4,40 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ## [0.3.1] - Unreleased
 
+### Added
+
+- `QS_TEST_LOG_DIR` retains separate per-suite output, exit codes and job counts for local acceptance evidence.
+
+- `mission.requirements`: an optional list of stable `REQ-xxx` identifiers from `docs/PRD.md`. `brief.py`
+  validates it, the strategist writes it into every mission, and the controller renders it into the PR's
+  Traceability section instead of the "not declared" placeholder.
+- `docs/PRD_TEMPLATE.md`, installed with the harness, gives the strategist's PRD a fixed shape with
+  per-requirement acceptance criteria and a mission-to-requirement table.
+- The controller renders the PR body from `.github/pull_request_template.md` with the mission branch,
+  final commit, reviewable diff size and the lead's report (shipped on main after 0.3.0).
+- Agent shell commands run inside Claude Code's OS sandbox where the platform supports it: `.claude/settings.json`
+  enables it with no unsandboxed retry and a network allowlist of GitHub and the npm and PyPI registries.
+  `preflight.py` reports `sandbox.available` and why not on native Windows or without `bubblewrap`/`socat`.
+- Controller runs allowlist the shell: an executable runs only if it is in the base set or named by a brief
+  `quality` command or `test` criterion. Leading `NAME=value` assignments no longer hide a command from the rules.
+- Preflight refuses a `quality.profile: docs` brief that has neither `mission.base` nor a resolvable
+  `origin/HEAD`, instead of the gate failing after the model has run.
+
 ### Fixed
 
 - Operator cancellation is rechecked during final verification and before publication commands. It records non-retryable SAFE_STOP and preserves receipts for completed publication side effects.
 - Documentation-only quality checks require a resolvable mission base or `origin/HEAD`; a missing base no longer turns an empty working-tree diff into a pass.
 - Installed-copy tests inherit the outer job limit. Windows defaults to one job, other platforms to at most four; invalid overrides fail before dispatch.
 - Standalone harness self-tests have a 90-minute limit for serial installed-copy coverage. Ordinary project checks retain 15 minutes, and mission deadlines remain authoritative.
-
-### Added
-
-- `QS_TEST_LOG_DIR` retains separate per-suite output, exit codes and job counts for local acceptance evidence.
+- The self-tests clear an inherited `CLAUDE_PROJECT_DIR`. The Stop hook's gate runs the suite with that
+  variable set, which pointed every fixture at the real repo's `.claude/state` and failed the gate on every
+  stop in this repo while CI stayed green.
+- `scripts/init.sh` names the "PR sizing and evidence" section among those to merge into an existing CLAUDE.md.
+- `scripts/init.sh` adds `__pycache__/` to the project's `.gitignore`. The harness's own Python imports wrote
+  bytecode under `scripts/__pycache__/` as untracked files, which failed the docs profile and the controller's
+  clean-tree check in any project without a global ignore for it.
+- The README's Quickstart commits every file `init.sh` installs; it had left the PR and PRD templates untracked,
+  which preflight refuses.
 
 ## [0.3.0] - 2026-10-03
 

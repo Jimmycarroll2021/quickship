@@ -11,8 +11,8 @@ Judge evidence must match the frozen rubric and the current deliverable hashes; 
 DONE requires a fresh gate, complete criteria including evidenced judge grades, all deliverables,
 security PASS on the final commit, a verified mission branch/PR, and an unchanged active harness.
 Before creating a new PR, the controller renders `.github/pull_request_template.md` into
-`.claude/state/pr-body.md`, fills the mission branch, final commit, reviewable diff size and controller-
-verified evidence, and embeds `docs/REPORT.md`. Reviewable line counts exclude known lockfiles, snapshots
+`.claude/state/pr-body.md`, fills the mission branch, the brief's `mission.requirements` identifiers, final
+commit, reviewable diff size and controller-verified evidence, and embeds `docs/REPORT.md`. Reviewable line counts exclude known lockfiles, snapshots
 and generated directories; the 500-line/10-file target is advisory, not a publication block. CI and human
 review checkboxes remain unresolved until GitHub runs and the operator reviews the PR. Installed copies
 include the PR template through `scripts/manifest.txt`.
@@ -41,9 +41,19 @@ The guard binds the hook's agent_id to that registered step before allowing owne
 current_step file is a compatibility view only, never the authority for schema-3 hooks.
 Publishing reservations are run-wide, persisted before external calls, and reconciled against GitHub on resume.
 Unknown shell constructs, native PowerShell, external connectors, protected writes and agent-side publishing
-are refused. These are cooperative safeguards, not a sandbox for hostile project code/dependencies.
+are refused. In a controller run the shell is also allowlisted: an executable runs only if it is in
+`policy.BASE_COMMANDS` (inspection, the gate and state CLIs, git and gh, and the package managers and test
+runners the gate drives) or is the first word of a brief `quality` command or a `test` criterion; anything
+else is denied with `not in this run's allowlist`. Leading `NAME=value` assignments are stripped before every
+rule sees a command. Agent shell commands also run inside Claude Code's OS sandbox (`sandbox` in
+`.claude/settings.json`: enabled, no unsandboxed retry, network limited to GitHub and the npm and PyPI
+registries) on macOS, Linux and WSL2 when `bubblewrap` and `socat` are installed; native Windows runs them
+unsandboxed and `preflight.py` reports which under `sandbox`. The hooks remain cooperative safeguards, not a
+sandbox for hostile project code/dependencies.
 Preflight is read-only (`python scripts/preflight.py`), supports Python 3.10+, Git Bash/Linux bash 4+,
 and Claude Code >=2.1.288. Old active runtime state is preserved and requires explicit migration/restart.
+A brief with `quality.profile: docs` and no `mission.base` fails preflight unless `origin/HEAD` resolves,
+because the docs profile diffs against it and would otherwise fail the gate only after the model has run.
 
 Every script and hook in this repo builds to these contracts. They are the interface between the lead loop in `CLAUDE.md`, the hooks in `scripts/hooks/`, the CLIs in `scripts/`, and the tests in `tests/`. Change a contract here first, then the code.
 
@@ -113,7 +123,7 @@ permissions:
 ambiguity_policy: choose-default-and-record
 ```
 
-brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list), `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
+brief.json is the same structure as JSON. Required: `mission.goal` (string), `mission.deliverables` (list). Optional: `mission.requirements` (list of stable `REQ-xxx` identifiers from `docs/PRD.md`, rendered into the PR's Traceability section) and `mission.base` (branch name, set by `scripts/program.sh`). Required elsewhere: `success_criteria` (list, each with `kind` in `test|file|grep|judge` and that kind's fields: test → `cmd`, `expect` (int, default 0); file → `path`, optional `must_contain` regex; grep → `pattern`, `path`; judge → `rubric`), `budgets` (all seven integers/floats > 0; defaults: stall_limit 3, replan_limit 5, critic_rounds 2), `permissions.irreversible.default` in `skip-and-record|allow`, `permissions.irreversible.allow` list of shell-glob patterns, `ambiguity_policy` = `choose-default-and-record`.
 
 
 `validate` writes `brief.json`. Under the v0.3 controller a brief change is a mission boundary only through the controller: after a verified `DONE`, a brief with a new goal archives the finished run and starts fresh; a change to the `budgets` block alone keeps the same run with the new limits; any other change to an active or unfinished run is refused until the operator runs `bash scripts/run.sh --archive`. Archiving moves the run's documents and ledgers to `docs/runs/` and clears the gitignored runtime state (controller state, session, counters, flags, transcript record).
@@ -213,7 +223,7 @@ Logs may contain private data and must not be uploaded without review.
 
 ## Install and upgrade behavior
 
-`scripts/init.sh <target-dir> [--force] [--upgrade]` installs the files listed in `scripts/manifest.txt` into a project (git-initialising it if needed), appends the three ignore lines, creates `docs/decisions.md` and `BRIEF.yaml` when absent, and records `.quickship/VERSION` and `.quickship/manifest.sha256`. A target file that differs from the source is skipped unless `--force`; `--upgrade` replaces only files whose current sha still matches the recorded one. `CLAUDE.md` is never overwritten. `run.cmd` and `init.cmd` are Windows wrappers that locate Git Bash.
+`scripts/init.sh <target-dir> [--force] [--upgrade]` installs the files listed in `scripts/manifest.txt` into a project (git-initialising it if needed), appends the four ignore lines (`.claude/worktrees/`, `.claude/state/`, `work/_untrusted/`, `__pycache__/`), creates `docs/decisions.md` and `BRIEF.yaml` when absent, and records `.quickship/VERSION` and `.quickship/manifest.sha256`. A target file that differs from the source is skipped unless `--force`; `--upgrade` replaces only files whose current sha still matches the recorded one. `CLAUDE.md` is never overwritten. `run.cmd` and `init.cmd` are Windows wrappers that locate Git Bash.
 
 `.quickship/VERSION` also tells `scripts/gate.sh` it is running in an installed copy: it then skips `bash tests/run.sh` (the harness self-tests) with the notice `gate: harness self-tests skipped in an installed copy (QS_SELFTEST=1 runs them)`. `QS_SELFTEST=1` runs them anyway. In the quickship repo itself, where the file is absent, the gate always runs them.
 

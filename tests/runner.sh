@@ -47,6 +47,18 @@ write_test "$d" cc.sh 0 "cc ok"
 expect_exit "all passing: exit 0" 0 bash -c "cd '$d' && bash tests/run.sh"
 expect_contains "all passing: last line is tests: PASS" "tests: PASS" "$(printf '%s\n' "$OUT" | tail -n 1)"
 
+# --- an inherited CLAUDE_PROJECT_DIR (the Stop hook exports it when its gate runs this suite) must not reach
+# tests that source lib.sh: fixtures would read the real repo's .claude/state instead of their own ---
+d="$(mkfixture)"
+cat > "$d/tests/env.sh" <<'EOF'
+#!/usr/bin/env bash
+source "$(dirname "$0")/lib.sh"
+[ -z "${CLAUDE_PROJECT_DIR:-}" ] && ok "CLAUDE_PROJECT_DIR is unset" || bad "CLAUDE_PROJECT_DIR leaked: $CLAUDE_PROJECT_DIR"
+finish
+EOF
+chmod +x "$d/tests/env.sh"
+expect_exit "lib.sh clears an inherited CLAUDE_PROJECT_DIR" 0 bash -c "cd '$d' && CLAUDE_PROJECT_DIR='$ROOT' bash tests/run.sh"
+
 # --- real concurrency: under QS_TEST_JOBS=2 two tests overlap in time. Each test records when it starts and
 # ends; the proof is that the second starts before the first ends. No wall-clock thresholds, so machine load
 # (the gate runs sixteen test files at once, one of which runs a nested full suite) cannot make this flaky ---

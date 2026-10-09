@@ -2,6 +2,10 @@
 # Shared helpers for tests/*.sh. Source this file; call finish at the end.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export QS_PYTHON="${QS_PYTHON:-$(command -v python3 || command -v python)}"
+# Claude Code exports CLAUDE_PROJECT_DIR to its hooks, and the Stop hook's gate runs this suite in the harness
+# repo. Scripts under test read the frozen brief and runtime state from that directory, so an inherited value
+# points every fixture at the real repo instead of its own .claude/state. Each test sets it when it needs it.
+unset CLAUDE_PROJECT_DIR
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL+1)); echo "  FAIL $1" >&2; }
