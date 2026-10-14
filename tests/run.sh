@@ -9,9 +9,8 @@ if [ "${QS_TEST_JOBS+x}" = x ]; then
 else
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) jobs=1;;
-    *) jobs="$(command -v nproc >/dev/null 2>&1 && nproc || echo 4)"
-       [[ "$jobs" =~ ^[1-9][0-9]{0,3}$ ]] || jobs=4
-       [ "$jobs" -le 4 ] || jobs=4;;
+    *) jobs="$(nproc 2>/dev/null || echo 4)"
+       [ "$jobs" -le 4 ] 2>/dev/null || jobs=4;;
   esac
 fi
 if ! [[ "$jobs" =~ ^[1-9][0-9]{0,3}$ ]] || [ "$jobs" -gt 1024 ]; then
@@ -41,8 +40,8 @@ trap 'if [ "$retain" = 0 ]; then rm -rf "$workdir"; fi' EXIT
 
 running=0
 for t in "${files[@]}"; do
-  out="$workdir/$(basename "$t").out"
-  rc="$workdir/$(basename "$t").rc"
+  out="$workdir/${t##*/}.out"
+  rc="$workdir/${t##*/}.rc"
   (
     bash "$t" >"$out" 2>&1
     echo $? >"$rc"
@@ -55,15 +54,15 @@ wait
 failed=()
 for t in "${files[@]}"; do
   echo "== $t"
-  cat "$workdir/$(basename "$t").out"
-  [ "$(cat "$workdir/$(basename "$t").rc")" = 0 ] || failed+=("$t")
+  cat "$workdir/${t##*/}.out"
+  [ "$(cat "$workdir/${t##*/}.rc")" = 0 ] || failed+=("$t")
 done
 
 if [ ${#failed[@]} -gt 0 ]; then
   # On GitHub Actions, surface failing lines as annotations (readable via the checks API when logs are not).
   if [ -n "${GITHUB_ACTIONS:-}" ]; then
     for t in "${failed[@]}"; do
-      grep -E '^[[:space:]]*FAIL |^[a-z_]+\.sh: [0-9]+ passed' "$workdir/$(basename "$t").out" | head -n 8 \
+      grep -E '^[[:space:]]*FAIL |^[a-z_]+\.sh: [0-9]+ passed' "$workdir/${t##*/}.out" | head -n 8 \
         | while IFS= read -r l; do printf '::error file=%s::%s\n' "$t" "$l"; done
     done
   fi

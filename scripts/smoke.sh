@@ -10,7 +10,7 @@ cd "$ROOT" || exit 1
 PY="$(command -v python3 || command -v python || true)"
 FAILS=()
 SKIPPED=0
-PID=""; WINPID=""; MODE=""
+PID=""; MODE=""
 fail() { FAILS+=("$1"); }
 finish_run() {
   local f
@@ -25,15 +25,13 @@ finish_run() {
 # ---- 1. secret scan ---------------------------------------------------------
 SECRET_RE='AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|sk-(ant-|proj-)[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{48}|sk_live_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 while IFS= read -r -d '' name; do
-  case "$name" in scripts/smoke.sh|.claude/smoke.log) continue;; esac
-  base="${name##*/}"
-  case "$base" in
+  case "${name##*/}" in
     *.example|*.sample|*.template) ;;
     .env|.env.*) fail "secrets: env file: $name";;
   esac
-  [ -f "$name" ] || continue
-  if grep -IqE -e "$SECRET_RE" -- "$name" 2>/dev/null; then fail "secrets: possible credential in: $name"; fi
 done < <(git ls-files -z --cached --others --exclude-standard)
+while IFS= read -r -d '' name; do fail "secrets: possible credential in: $name"; done \
+  < <(git grep -lIzE --untracked -e "$SECRET_RE" -- . ':!scripts/smoke.sh' ':!.claude/smoke.log' 2>/dev/null)
 
 # ---- 2. stub scan -----------------------------------------------------------
 EXTRA=()
@@ -63,18 +61,18 @@ LOG=".claude/smoke.log"
 alive() { kill -0 "$PID" 2>/dev/null; }
 # group_alive: any process left in the demo's process group (MODE=group), else just the leader.
 group_alive() {
-  if [ "$MODE" = group ]; then kill -0 -- "-$PID" 2>/dev/null; else kill -0 "$PID" 2>/dev/null; fi
+  if [ "$MODE" = group ]; then kill -0 -- "-$PID" 2>/dev/null; else alive; fi
 }
 cleanup() {
+  local winpid i=0
   trap - EXIT INT TERM
   if [ -n "$PID" ]; then
     case "$MODE" in
       winpid)
         # exec inside demo.sh changes the Windows PID, so resolve it now, not at spawn
-        WINPID="$(ps -p "$PID" -W 2>/dev/null | awk 'NR==2{print $4}')"
-        if [ -n "$WINPID" ]; then taskkill //PID "$WINPID" //T //F >/dev/null 2>&1; else kill -KILL "$PID" 2>/dev/null; fi ;;
+        winpid="$(ps -p "$PID" -W 2>/dev/null | awk 'NR==2{print $4}')"
+        if [ -n "$winpid" ]; then taskkill //PID "$winpid" //T //F >/dev/null 2>&1; else kill -KILL "$PID" 2>/dev/null; fi ;;
       *) kill -TERM -- "-$PID" 2>/dev/null || kill -TERM "$PID" 2>/dev/null
-         local i=0
          while group_alive && [ $i -lt 6 ]; do sleep 0.5; i=$((i+1)); done
          if group_alive; then kill -KILL -- "-$PID" 2>/dev/null || kill -KILL "$PID" 2>/dev/null; fi ;;
     esac
@@ -82,8 +80,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-trap 'cleanup; exit 130' INT
-trap 'cleanup; exit 143' TERM
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) WINDOWS=1;; *) WINDOWS=0;; esac
 if [ "$WINDOWS" = 0 ] && command -v setsid >/dev/null 2>&1; then
@@ -108,14 +106,14 @@ probe() {
 }
 taillog() { echo "--- tail of $LOG ---"; tail -n 40 "$LOG" 2>/dev/null; }
 TIMEOUT="${SMOKE_BOOT_TIMEOUT:-60}"
-deadline=$(( $(date +%s) + TIMEOUT ))
+deadline=$(( SECONDS + TIMEOUT ))
 healthy=0
 while :; do
   if ! alive; then
     fail "demo.sh exited during boot"; taillog; break
   fi
   if probe; then healthy=1; break; fi
-  if [ "$(date +%s)" -ge "$deadline" ]; then
+  if [ "$SECONDS" -ge "$deadline" ]; then
     fail "health check $URL not ready after ${TIMEOUT}s"; taillog; break
   fi
   sleep 0.5

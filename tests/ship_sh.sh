@@ -6,8 +6,7 @@ git -C "$F" init -q -b main
 git -C "$F" config user.name test; git -C "$F" config user.email test@example.com
 echo hi > "$F/README"; cp "$ROOT/ship.sh" "$F/ship.sh"
 git -C "$F" add -A && git -C "$F" commit -qm init
-S="$(tmpdir)"; mkdir -p "$S/bin"
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s/claude.args"\nexit 0\n' "$S" > "$S/bin/claude"; chmod +x "$S/bin/claude"
+S="$(tmpdir)"; mkclaude_stub "$S"
 export QS_CLAUDE_BIN="$S/bin/claude"
 run() { ( cd "$F" && bash ship.sh "$@" ); }
 branch() { git -C "$F" rev-parse --abbrev-ref HEAD; }

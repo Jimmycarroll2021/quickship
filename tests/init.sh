@@ -47,8 +47,7 @@ expect_contains "unrelated untracked file stays untracked" "?? untracked.txt" "$
 [ "$(git -C "$t3" show --stat --format= HEAD | grep -c 'app.txt\|untracked.txt')" = 0 ] && ok "install commit excludes unrelated files" || bad "install commit contains unrelated files"
 
 # end to end: init, then ./ship.sh "idea" must reach claude (stubbed), not die on a dirty tree
-E="$(tmpdir)"; mkdir -p "$E/bin"
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s/claude.args"\nexit 0\n' "$E" > "$E/bin/claude"; chmod +x "$E/bin/claude"
+E="$(tmpdir)"; mkclaude_stub "$E"
 t4="$(tmpdir)/proj4"; bash "$INIT" "$t4" >/dev/null 2>&1
 e2e() { ( cd "$t4" && QS_CLAUDE_BIN="$E/bin/claude" ./ship.sh "an idea" ); }
 expect_exit "init then ship.sh exits 0" 0 e2e

@@ -8,52 +8,46 @@ cat > "$F/scripts/smoke.sh" <<'SM'
 #!/usr/bin/env bash
 case "$(cat "$(dirname "$0")/../MODE")" in
   pass) echo PASS; exit 0;;
-  fail) echo "line one"; echo 'say "quoted" \ back'; echo "line three"; echo FAIL; exit 1;;
-  esc) printf '\033[31mred FAIL\033[0m\n'; exit 1;;
-  oneline) printf 'one "quoted" line'; exit 1;;
+  fail) echo "line one"; echo 'say "quoted" \ back'; printf '\033[31mred\033[0m\n'; echo FAIL; exit 1;;
   silent) exit 1;;
 esac
 SM
 echo pass > "$F/MODE"
-run() { printf '%s' "$1" | CLAUDE_PROJECT_DIR="$F" bash "$ROOT/scripts/stop_hook.sh"; }
+# run <stdin-json>: stdout in $OUT, stderr in $ERR, exit code in $rc
+run() {
+  local e; e="$(mktemp "${TMPDIR:-/tmp}/qs-hook-err.XXXXXX")"
+  OUT="$(printf '%s' "$1" | CLAUDE_PROJECT_DIR="$F" bash "$ROOT/scripts/stop_hook.sh" 2>"$e")"; rc=$?
+  ERR="$(cat "$e")"; rm -f "$e"
+}
 isjson() { printf '%s' "$1" | "$QS_PYTHON" -m json.tool >/dev/null 2>&1; }
 
-OUT="$(run '{"stop_hook_active":false}')"; rc=$?
-[ $rc = 0 ] && [ -z "$OUT" ] && ok "1 no DEMO_SPEC.md: silent exit 0" || bad "1 no DEMO_SPEC.md (rc=$rc out=$OUT)"
+run '{"stop_hook_active":false}'
+[ $rc = 0 ] && [ -z "$OUT$ERR" ] && ok "1 no DEMO_SPEC.md: silent exit 0" || bad "1 no DEMO_SPEC.md (rc=$rc out=$OUT err=$ERR)"
 
 : > "$F/DEMO_SPEC.md"; : > "$F/demo.sh"
-OUT="$(run '{"stop_hook_active":false}')"; rc=$?
-[ $rc = 0 ] && [ -z "$OUT" ] && ok "2 smoke passes: silent exit 0" || bad "2 smoke passes (rc=$rc out=$OUT)"
+run '{"stop_hook_active":false}'
+[ $rc = 0 ] && [ -z "$OUT$ERR" ] && ok "2 smoke passes: silent exit 0" || bad "2 smoke passes (rc=$rc out=$OUT err=$ERR)"
 
 echo fail > "$F/MODE"
-OUT="$(run '{"stop_hook_active":false}')"; rc=$?
-[ $rc = 0 ] && ok "3 fail: exit 0" || bad "3 fail: exit $rc"
-expect_contains "3 fail: decision block" '"decision":"block"' "$OUT"
-expect_contains "3 fail: reason has FAIL" 'FAIL' "$OUT"
-isjson "$OUT" && ok "3 fail: valid JSON" || bad "3 fail: invalid JSON: $OUT"
-expect_contains "3 fail: quote preserved" 'quoted' "$OUT"
+run '{"stop_hook_active":false}'
+[ $rc = 2 ] && ok "3 fail: exit 2 blocks the stop" || bad "3 fail: exit $rc"
+[ -z "$OUT" ] && ok "3 fail: nothing on stdout" || bad "3 fail: stdout not empty: $OUT"
+expect_contains "3 fail: reason on stderr has FAIL" 'FAIL' "$ERR"
+expect_contains "3 fail: quotes and backslashes survive" 'say "quoted" \ back' "$ERR"
+expect_contains "3 fail: colour codes pass through" '[31m' "$ERR"
+expect_contains "3 fail: says fix the cause" 'fix the cause' "$ERR"
 
-OUT="$(run '{"stop_hook_active": true}')"; rc=$?
-[ $rc = 0 ] && ok "4 active+failing: exit 0" || bad "4 active+failing: exit $rc"
+run '{"stop_hook_active": true}'
+[ $rc = 0 ] && ok "4 active+failing: exit 0 lets go" || bad "4 active+failing: exit $rc"
 expect_contains "4 active+failing: systemMessage" 'systemMessage' "$OUT"
 isjson "$OUT" && ok "4 active+failing: valid JSON" || bad "4 active+failing: invalid JSON: $OUT"
 
 echo pass > "$F/MODE"
-OUT="$(run '{"stop_hook_active": true}')"; rc=$?
-[ $rc = 0 ] && [ -z "$OUT" ] && ok "4b active+passing: silent exit 0 (no false 'still failing')" || bad "4b active+passing (rc=$rc out=$OUT)"
+run '{"stop_hook_active": true}'
+[ $rc = 0 ] && [ -z "$OUT$ERR" ] && ok "4b active+passing: silent exit 0 (no false 'still failing')" || bad "4b active+passing (rc=$rc out=$OUT err=$ERR)"
 
 echo silent > "$F/MODE"
-OUT="$(run '{"stop_hook_active":false}')"
-isjson "$OUT" && ok "4c no-output failure: valid JSON" || bad "4c no-output: invalid JSON: $OUT"
-expect_contains "4c no-output failure: reason filled" 'no output' "$OUT"
-
-echo esc > "$F/MODE"
-OUT="$(run '{"stop_hook_active":false}')"
-isjson "$OUT" && ok "5 ESC in output: valid JSON" || bad "5 ESC: invalid JSON: $OUT"
-expect_contains "5 ESC: text kept" '[31m' "$OUT"
-
-echo oneline > "$F/MODE"
-OUT="$(run '{"stop_hook_active":false}')"
-isjson "$OUT" && ok "6 one-line log with quote: valid JSON" || bad "6 one-line: invalid JSON: $OUT"
-expect_contains "6 one-line: blocks" '"decision":"block"' "$OUT"
+run '{"stop_hook_active":false}'
+[ $rc = 2 ] && ok "5 no-output failure: still blocks" || bad "5 no-output: exit $rc"
+expect_contains "5 no-output failure: reason filled" 'no output' "$ERR"
 finish

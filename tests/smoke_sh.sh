@@ -11,12 +11,10 @@ OUT="$(run "$F" 2>&1)"; rc=$?
 [ "$(printf '%s\n' "$OUT" | tail -n 1)" = "PASS (spec skipped)" ] && ok "final line" || bad "final line: $(printf '%s' "$OUT" | tail -n 2)"
 
 echo "1b. cleanup after case 1"
-line="$(printf '%s\n' "$OUT" | grep -m1 '^smoke: pid ')"
-pid="$(printf '%s' "$line" | awk '{print $3}')"; port="$(printf '%s' "$line" | awk '{print $5}')"
+pid="$(printf '%s\n' "$OUT" | sed -nE 's/^smoke: pid ([0-9]+) .*/\1/p' | head -n 1)"; port="$(smoke_port)"
 if [ -n "$pid" ] && [ -n "$port" ]; then
   if kill -0 "$pid" 2>/dev/null; then bad "pid $pid still alive"; else ok "pid gone"; fi
-  "$QS_PYTHON" -c 'import socket,sys;s=socket.socket();sys.exit(0 if s.connect_ex(("127.0.0.1",int(sys.argv[1]))) else 1)' "$port" \
-    && ok "port $port closed" || bad "port $port still listening"
+  port_closed "$port" && ok "port $port closed" || bad "port $port still listening"
 else bad "no 'smoke: pid <pid> port <port>' line"; fi
 
 echo "2. demo exits during boot"
@@ -60,11 +58,8 @@ F="$(mkfixture)"
 { printf 'import signal\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n'; cat "$F/server.py"; } >"$F/ign.py"
 printf '#!/usr/bin/env bash\n"%s" ign.py &\nwait\n' "$QS_PYTHON" >"$F/demo.sh"
 expect_exit "exit 0" 0 run "$F"
-line="$(printf '%s\n' "$OUT" | grep -m1 '^smoke: pid ')"
-port="$(printf '%s' "$line" | awk '{print $5}')"
-if [ -n "$port" ]; then
-  "$QS_PYTHON" -c 'import socket,sys;s=socket.socket();sys.exit(0 if s.connect_ex(("127.0.0.1",int(sys.argv[1]))) else 1)' "$port" \
-    && ok "port $port closed" || bad "port $port still listening (TERM-ignoring child survived)"
+port="$(smoke_port)"
+if [ -n "$port" ]; then port_closed "$port" && ok "port $port closed" || bad "port $port still listening (TERM-ignoring child survived)"
 else bad "no 'smoke: pid <pid> port <port>' line"; fi
 
 echo "10. AIza key in untracked file"

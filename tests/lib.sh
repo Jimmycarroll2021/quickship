@@ -40,4 +40,12 @@ PYEOF
   echo "$d"
 }
 tmpdir() { mktemp -d "${TMPDIR:-/tmp}/qs-test.XXXXXX"; }
+# mkclaude_stub <dir> -> writes <dir>/bin/claude that records its args in <dir>/claude.args and exits 0
+mkclaude_stub() {
+  mkdir -p "$1/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s/claude.args"\nexit 0\n' "$1" >"$1/bin/claude"; chmod +x "$1/bin/claude"
+}
+# smoke_port -> the port from the "smoke: pid N port M" line in $OUT; port_closed <port> -> true when nothing listens
+smoke_port() { printf '%s\n' "$OUT" | sed -nE 's/^smoke: pid [0-9]+ port ([0-9]+).*/\1/p' | head -n 1; }
+port_closed() { "$QS_PYTHON" -c 'import socket,sys;s=socket.socket();sys.exit(0 if s.connect_ex(("127.0.0.1",int(sys.argv[1]))) else 1)' "$1"; }
 finish() { echo "$(basename "$0"): $PASS passed, $FAIL failed"; [ "$FAIL" = 0 ]; }
