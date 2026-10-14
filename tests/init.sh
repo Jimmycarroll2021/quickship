@@ -16,6 +16,8 @@ for f in $FILES; do [ -f "$t/$f" ] && ok "installed $f" || bad "missing $f"; don
 for f in scripts/smoke.sh scripts/stop_hook.sh ship.sh; do [ -x "$t/$f" ] && ok "$f executable" || bad "$f not executable"; done
 grep -qxF ".claude/smoke.log" "$t/.gitignore" && ok ".gitignore has smoke.log" || bad ".gitignore lacks .claude/smoke.log"
 grep -qxF ".claude/state/" "$t/.gitignore" && ok ".gitignore has state/" || bad ".gitignore lacks .claude/state/"
+grep -qxF "node_modules/" "$t/.gitignore" && ok ".gitignore has node_modules/" || bad ".gitignore lacks node_modules/"
+grep -qxF "__pycache__/" "$t/.gitignore" && ok ".gitignore has __pycache__/" || bad ".gitignore lacks __pycache__/"
 for f in scripts/gate.sh scripts/policy.py scripts/runner.py .claude/agents/worker.md BRIEF.example.yaml .quickship; do
   [ -e "$t/$f" ] && bad "target must not contain $f" || ok "no $f in target"
 done
@@ -51,6 +53,19 @@ t4="$(tmpdir)/proj4"; bash "$INIT" "$t4" >/dev/null 2>&1
 e2e() { ( cd "$t4" && QS_CLAUDE_BIN="$E/bin/claude" ./ship.sh "an idea" ); }
 expect_exit "init then ship.sh exits 0" 0 e2e
 [ -s "$E/claude.args" ] && ok "ship.sh reached claude stub" || bad "ship.sh did not reach claude: $OUT"
+
+# target .gitignore ignoring .claude/: install still commits cleanly
+t5="$(tmpdir)/proj5"; mkdir -p "$t5"; git -C "$t5" init -q
+printf '.claude/\n' > "$t5/.gitignore"; git -C "$t5" add .gitignore; git -C "$t5" commit -qm base
+expect_exit "init with .claude/ ignored exits 0" 0 bash "$INIT" "$t5"
+[ -z "$(git -C "$t5" status --porcelain)" ] && ok "ignored .claude/: tree clean" || bad "ignored .claude/: dirty: $(git -C "$t5" status --porcelain | head -n 3)"
+[ -n "$(git -C "$t5" ls-files .claude/settings.json)" ] && ok "ignored .claude/: settings.json tracked" || bad "settings.json not tracked"
+
+# a committed non-executable ship.sh is not chmod'ed
+t6="$(tmpdir)/proj6"; mkdir -p "$t6"; git -C "$t6" init -q
+printf '#!/bin/sh\n' > "$t6/ship.sh"; chmod 644 "$t6/ship.sh"; git -C "$t6" add ship.sh; git -C "$t6" commit -qm base
+expect_exit "init with existing ship.sh exits 0" 0 bash "$INIT" "$t6"
+[ -z "$(git -C "$t6" status --porcelain)" ] && ok "existing ship.sh: no mode change" || bad "existing ship.sh dirtied: $(git -C "$t6" status --porcelain | head -n 3)"
 
 # usage and self-target
 expect_exit "target = repo root exits 2" 2 bash "$INIT" "$ROOT"

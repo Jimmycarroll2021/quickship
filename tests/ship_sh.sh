@@ -45,6 +45,16 @@ expect_exit "file idea exits 0" 0 run "my idea.md"
 cmp -s "$F/my idea.md" "$F/IDEA.md" && ok "IDEA.md equals file" || bad "IDEA.md differs from file"
 
 git -C "$F" switch -q main
+mkdir -p "$F/path/to"; printf 'nested idea\n' > "$F/path/to/x.md"; git -C "$F" add -A; git -C "$F" commit -qm nested
+expect_exit "path/to/x.md idea exits 0" 0 run path/to/x.md
+cmp -s "$F/path/to/x.md" "$F/IDEA.md" && ok "path/to/x.md copied" || bad "path/to/x.md not copied"
+
+git -C "$F" switch -q main
+printf 'license text\n' > "$F/LICENSE"; git -C "$F" add -A; git -C "$F" commit -qm lic
+expect_exit "bare existing filename exits 0" 0 run LICENSE
+[ "$(cat "$F/IDEA.md")" = "LICENSE" ] && ok "bare filename is literal idea text" || bad "IDEA.md for LICENSE is: $(cat "$F/IDEA.md")"
+
+git -C "$F" switch -q main
 run "A Todo App, with Tags!" >/dev/null 2>&1
 [ "$(branch)" = "demo/a-todo-app-with-tags-4" ] && ok "duplicate slug gets next free suffix" || bad "dup branch is $(branch)"
 

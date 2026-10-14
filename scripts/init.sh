@@ -12,10 +12,12 @@ T="$(cd "$1" && pwd -P)"
 [ -e "$T/.git" ] || git init -q "$T"
 added=()
 for f in $FILES; do
-  if [ -e "$T/$f" ]; then echo "skip $f"; else mkdir -p "$(dirname "$T/$f")" && cp "$SRC/$f" "$T/$f" && echo "add $f" && added+=("$f"); fi
-  case "$f" in *.sh) chmod +x "$T/$f";; esac
+  if [ -e "$T/$f" ]; then echo "skip $f"; else
+    mkdir -p "$(dirname "$T/$f")" && cp "$SRC/$f" "$T/$f" && echo "add $f" && added+=("$f")
+    case "$f" in *.sh) chmod +x "$T/$f";; esac
+  fi
 done
-for line in .claude/smoke.log .claude/state/; do
+for line in .claude/smoke.log .claude/state/ node_modules/ __pycache__/; do
   grep -qxF -- "$line" "$T/.gitignore" 2>/dev/null && continue
   [ -s "$T/.gitignore" ] && [ -n "$(tail -c1 "$T/.gitignore")" ] && echo >> "$T/.gitignore"
   echo "$line" >> "$T/.gitignore"
@@ -23,9 +25,9 @@ done
 
 # Commit only what init added (plus .gitignore) so ship.sh finds a clean tree.
 paths=("${added[@]+"${added[@]}"}" .gitignore)
-git -C "$T" add -- "${paths[@]}" >/dev/null 2>&1
-if ! git -C "$T" diff --cached --quiet -- "${paths[@]}" 2>/dev/null; then
-  git -C "$T" commit -q -m "quickship: install" -- "${paths[@]}" >/dev/null 2>&1 \
+git -C "$T" add -f -- "${paths[@]}" >/dev/null
+if ! git -C "$T" diff --cached --quiet -- "${paths[@]}"; then
+  git -C "$T" commit -q -m "quickship: install" -- "${paths[@]}" >/dev/null \
     || echo "next: git -C \"$T\" commit -m \"quickship: install\""
 fi
 echo "next: cd \"$T\" && ./ship.sh \"your idea\""

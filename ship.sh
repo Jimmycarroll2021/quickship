@@ -8,7 +8,7 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not a git repository
 [ -z "$(git -C "$ROOT" status --porcelain)" ] || die "working tree is not clean; commit or stash first"
 BIN="${QS_CLAUDE_BIN:-claude}"
 command -v "$BIN" >/dev/null 2>&1 || die "claude not found; install Claude Code"
-if [ -f "$1" ]; then
+if [ -f "$1" ] && case "$1" in *.md|*/*) true;; *) false;; esac; then
   [ "$1" -ef "$ROOT/IDEA.md" ] || cp "$1" "$ROOT/IDEA.md"
 else
   printf '%s\n' "$1" > "$ROOT/IDEA.md"
