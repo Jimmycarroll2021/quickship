@@ -15,18 +15,23 @@ expect_exit() {
 expect_contains() { # expect_contains <label> <needle> <haystack>
   case "$3" in *"$2"*) ok "$1";; *) bad "$1 (missing '$2' in: $(printf '%s' "$3" | tail -n 3))";; esac
 }
-# mkfixture -> echoes a fresh git repo with a python http.server demo.sh, DEMO_SPEC.md and scripts/smoke.sh
+# mkfixture [redirect] -> echoes a fresh git repo with a python http.server demo.sh, DEMO_SPEC.md and scripts/smoke.sh
+# With "redirect" the server answers /healthz with a 302 to / instead of a 200.
 mkfixture() {
-  local d; d="$(tmpdir)"
+  local d redirect=False; d="$(tmpdir)"
+  [ "${1:-}" = redirect ] && redirect=True
   git -C "$d" init -q
   git -C "$d" config user.name test
   git -C "$d" config user.email test@example.com
-  cat >"$d/server.py" <<'PYEOF'
+  printf 'REDIRECT = %s\n' "$redirect" >"$d/server.py"
+  cat >>"$d/server.py" <<'PYEOF'
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path in ("/", "/healthz"):
+        if REDIRECT and self.path == "/healthz":
+            self.send_response(302); self.send_header("Location", "/"); self.send_header("Content-Length", "0"); self.end_headers()
+        elif self.path in ("/", "/healthz"):
             self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"ok")
         else:
             self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers()

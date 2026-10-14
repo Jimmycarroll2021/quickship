@@ -93,7 +93,7 @@ Every golden-path step names what must be visible afterwards, so the smoke spec 
 
 ## Guardrails
 
-- **Deny list.** `.claude/settings.json` blocks `git push` (including the `git -C` and `--git-dir` forms) from Bash, `gh pr merge`, the GitHub MCP push and merge tools, `git reset --hard`, `rm -rf`, `pip install`, and reads or edits of `.env*` anywhere in the tree via the Read, Edit and Write tools. Commands run inside python, node or another interpreter are not inspected.
+- **Deny list.** `.claude/settings.json` blocks `git push` (including the `git -C` and `--git-dir` forms) from Bash, `gh pr merge`, the GitHub MCP push and merge tools, `git reset --hard`, `rm -rf`, `pip install`, and reads or edits of the usual `.env` files (`.env`, `.env.local`, `.env.production`, `.env.prod`, `.envrc` and so on, but not `*.example`, `*.sample` or `*.template`) anywhere in the tree via the Read, Edit and Write tools. `smoke.sh` is the backstop: it fails on any `.env*` file in the tree other than those templates. Commands run inside python, node or another interpreter are not inspected.
 - **Sandbox.** Shell commands run in Claude Code's sandbox with a network allowlist of GitHub, npm, PyPI and the Playwright download hosts. Local port binding is allowed so `./demo.sh` can listen.
 - **Stop hook.** When `DEMO_SPEC.md` and `demo.sh` both exist, `scripts/stop_hook.sh` runs `smoke.sh` as Claude tries to stop. On FAIL it blocks once and shows the last 15 lines. If Claude stops again (`stop_hook_active` is set) and `smoke.sh` still fails, it lets go with a message rather than looping; if it passes by then, it stays silent. The hook has a 900 s budget.
 - **Web access.** Only the `shaper` has `WebSearch`. The verifier has no Write or Edit tools.

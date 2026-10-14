@@ -16,7 +16,7 @@ Before opening a PR: `/code-review medium`. A human merges; agents never do.
 ## Hard rules (also enforced by `.claude/settings.json`)
 - Never push to `main` or `master`, never force-push, never rewrite history.
 - Never merge a pull request.
-- Never read or write `.env*` files (except `*.example`), production config or deploy manifests.
+- Never read or write `.env*` files (except `*.example`, `*.sample`, `*.template`), production config or deploy manifests. The deny list blocks the usual names; `smoke.sh` fails on any other `.env*` in the tree.
 - Never `rm -rf`, never `pip install` outside the project's own tooling.
 - Never skip, delete or weaken a test to get green.
 - Use `git -C <dir>`, never `cd` before git.

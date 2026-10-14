@@ -83,4 +83,23 @@ echo 'const copy = "Lorem Ipsum dolor sit amet";' >"$F/src/copy.js"
 expect_exit "Lorem Ipsum fails" 1 run "$F"
 expect_contains "names file" "copy.js" "$OUT"
 
+echo "13. stub scan reports path:line, never the line text"
+F="$(mkfixture)"; mkdir -p "$F/src"; key="$(printf 'AKIA%s' 1234567890ABCDEF)"
+printf 'x = 1\n// TODO rotate %s\n' "$key" >"$F/src/app.js"
+expect_exit "exit 1" 1 run "$F"
+expect_contains "stub reported" "stubs found" "$OUT"
+expect_contains "path:line shown" "src/app.js:2" "$OUT"
+case "$OUT" in *"$key"*) bad "key value leaked via stub line";; *) ok "key not printed";; esac
+
+echo "14. github_pat_ token in untracked file"
+F="$(mkfixture)"; tok="$(printf 'github_pat_%s' 11AbCdEfG0123456789_zYxWvUtSrQ)"; printf 't=%s\n' "$tok" >"$F/pat.txt"
+expect_exit "exit 1" 1 run "$F"
+expect_contains "names file" "pat.txt" "$OUT"
+case "$OUT" in *"$tok"*) bad "token value leaked";; *) ok "token not printed";; esac
+
+echo "15. health path that redirects is not ready"
+F="$(mkfixture redirect)"
+SMOKE_BOOT_TIMEOUT=4 expect_exit "exit 1" 1 run "$F"
+expect_contains "not ready" "not ready" "$OUT"
+
 finish

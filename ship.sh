@@ -18,6 +18,6 @@ slug="$(head -c 40 "$ROOT/IDEA.md" | tr "A-Z\n" "a-z " | sed 's/[^a-z0-9][^a-z0-
 branch="demo/$slug"; n=2
 while git -C "$ROOT" show-ref --verify --quiet "refs/heads/$branch"; do branch="demo/$slug-$n"; n=$((n+1)); done
 git -C "$ROOT" switch -q -c "$branch" || die "cannot create branch $branch"
-git -C "$ROOT" add IDEA.md || die "cannot stage IDEA.md"
+git -C "$ROOT" add -f IDEA.md || die "cannot stage IDEA.md"
 git -C "$ROOT" diff --cached --quiet || git -C "$ROOT" commit -q -m "idea: $slug" || die "commit failed"
 cd "$ROOT" && exec "$BIN" "Read IDEA.md, then run /shape and show me DEMO_SPEC.md. Stop there."
