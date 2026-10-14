@@ -4,6 +4,17 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-14
+
+### Fixed
+
+- The stub scan in `scripts/smoke.sh` reports `path:line` only, so a credential on a TODO line is never printed.
+- The secret scan now catches `github_pat_` tokens.
+- The health probe needs a 2xx answer; a redirect no longer counts as ready.
+- The deny rules block the real `.env` files again but no longer block `.env.example`, `.env.sample` or `.env.template`.
+- `ship.sh` force-adds `IDEA.md`, so a project that ignores `*.md` still works.
+- `scripts/init.sh` stops with exit 2 when a copy fails, when `.gitignore` has uncommitted changes, or when the install commit fails.
+
 ## [0.4.0] - 2026-10-14
 
 ### Changed
@@ -203,6 +214,7 @@ First public release: a Claude Code harness that takes one Mission Brief and shi
 
 Seven unattended missions ran with this release, including a real application and a kill-and-resume run. The figures, recomputed in 0.1.1 from the full transcripts, are in the README under "Track record".
 
+[0.4.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.0

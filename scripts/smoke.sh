@@ -23,7 +23,7 @@ finish_run() {
 }
 
 # ---- 1. secret scan ---------------------------------------------------------
-SECRET_RE='AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|sk-(ant-|proj-)[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{48}|sk_live_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+SECRET_RE='AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|sk-(ant-|proj-)[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{48}|sk_live_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,}|github_pat_[A-Za-z0-9_]{22,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 while IFS= read -r -d '' name; do
   case "${name##*/}" in
     *.example|*.sample|*.template) ;;
@@ -37,7 +37,7 @@ while IFS= read -r -d '' name; do fail "secrets: possible credential in: $name";
 EXTRA=()
 # shellcheck disable=SC2206
 [ -n "${SMOKE_STUB_EXCLUDE:-}" ] && for p in $SMOKE_STUB_EXCLUDE; do EXTRA+=(":!$p"); done
-STUBS="$(git grep -nIiE --untracked '(//|#|/\*|\*|<!--|--)[[:space:]]*(TODO|FIXME)\b|coming soon|href="#"|not implemented|lorem ipsum' -- . ':!tests' ':!*.md' ':!docs' ':!scripts/smoke.sh' ':!.claude' ${EXTRA[@]+"${EXTRA[@]}"} 2>/dev/null)"
+STUBS="$(git grep -nIiE --untracked '(//|#|/\*|\*|<!--|--)[[:space:]]*(TODO|FIXME)\b|coming soon|href="#"|not implemented|lorem ipsum' -- . ':!tests' ':!*.md' ':!docs' ':!scripts/smoke.sh' ':!.claude' ${EXTRA[@]+"${EXTRA[@]}"} 2>/dev/null | cut -d: -f1,2)"
 if [ -n "$STUBS" ]; then
   fail "stubs found (TODO/FIXME/placeholder):"
   while IFS= read -r l; do FAILS+=("  $l"); done <<<"$STUBS"
@@ -101,8 +101,19 @@ echo "smoke: pid $PID port $PORT"
 # ---- 4. health wait ---------------------------------------------------------
 URL="http://localhost:$PORT$HEALTH"
 probe() {
-  if command -v curl >/dev/null 2>&1; then curl -fsS --max-time 2 -o /dev/null "$URL" >/dev/null 2>&1
-  else "$PY" -c 'import sys,urllib.request;urllib.request.urlopen(sys.argv[1],timeout=2)' "$URL" >/dev/null 2>&1; fi
+  # healthy means a direct 2xx: redirects are not followed and count as not ready
+  if command -v curl >/dev/null 2>&1; then
+    local code
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 2 "$URL" 2>/dev/null)" || return 1
+    case "$code" in 2*) return 0;; *) return 1;; esac
+  else
+    "$PY" -c '
+import sys, urllib.request as r, urllib.error as e
+class N(r.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k): raise e.URLError("redirect")
+c = r.build_opener(N).open(sys.argv[1], timeout=2).getcode()
+sys.exit(0 if 200 <= c < 300 else 1)' "$URL" >/dev/null 2>&1
+  fi
 }
 taillog() { echo "--- tail of $LOG ---"; tail -n 40 "$LOG" 2>/dev/null; }
 TIMEOUT="${SMOKE_BOOT_TIMEOUT:-60}"

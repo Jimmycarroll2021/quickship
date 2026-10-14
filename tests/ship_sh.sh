@@ -57,6 +57,14 @@ git -C "$F" switch -q main
 run "A Todo App, with Tags!" >/dev/null 2>&1
 [ "$(branch)" = "demo/a-todo-app-with-tags-4" ] && ok "duplicate slug gets next free suffix" || bad "dup branch is $(branch)"
 
+# a target that ignores *.md still gets IDEA.md tracked
+git -C "$F" switch -q main
+printf '*.md\n' >> "$F/.gitignore"; git -C "$F" add .gitignore; git -C "$F" commit -qm ignoremd
+rm -f "$S/claude.args"
+expect_exit "ignored *.md: exits 0" 0 run "idea in an ignored-md repo"
+[ -s "$S/claude.args" ] && ok "ignored *.md: reaches claude" || bad "ignored *.md: did not reach claude"
+[ -n "$(git -C "$F" ls-files IDEA.md)" ] && ok "ignored *.md: IDEA.md tracked" || bad "IDEA.md not tracked"
+
 git -C "$F" switch -q main
 QS_CLAUDE_BIN=/nonexistent expect_exit "missing claude exits 2" 2 run "x idea"
 finish

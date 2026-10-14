@@ -66,6 +66,36 @@ printf '#!/bin/sh\n' > "$t6/ship.sh"; chmod 644 "$t6/ship.sh"; git -C "$t6" add 
 expect_exit "init with existing ship.sh exits 0" 0 bash "$INIT" "$t6"
 [ -z "$(git -C "$t6" status --porcelain)" ] && ok "existing ship.sh: no mode change" || bad "existing ship.sh dirtied: $(git -C "$t6" status --porcelain | head -n 3)"
 
+# .claude exists as a regular file: abort with exit 2 naming the path
+t7="$(tmpdir)/proj7"; mkdir -p "$t7"; printf 'not a dir\n' > "$t7/.claude"
+expect_exit ".claude as a file exits 2" 2 bash "$INIT" "$t7"
+expect_contains "names the failing path" ".claude/" "$OUT"
+case "$OUT" in *"./ship.sh"*) bad "must not print the ship line on failure";; *) ok "no ship line on copy failure";; esac
+
+# uncommitted .gitignore changes: refuse, change nothing
+t8="$(tmpdir)/proj8"; mkdir -p "$t8"; git -C "$t8" init -q
+printf 'build/\n' > "$t8/.gitignore"; git -C "$t8" add .gitignore; git -C "$t8" commit -qm base
+printf 'build/\nlocal-edit\n' > "$t8/.gitignore"
+head8="$(git -C "$t8" rev-parse HEAD)"; gi8="$(cat "$t8/.gitignore")"
+expect_exit "modified .gitignore exits 2" 2 bash "$INIT" "$t8"
+expect_contains "explains" ".gitignore has uncommitted changes; commit or stash them first" "$OUT"
+[ "$(git -C "$t8" rev-parse HEAD)" = "$head8" ] && ok "nothing committed" || bad "a commit was made"
+[ "$(cat "$t8/.gitignore")" = "$gi8" ] && ok ".gitignore unchanged" || bad ".gitignore was modified"
+[ ! -e "$t8/CLAUDE.md" ] && [ ! -e "$t8/.claude" ] && ok "no files installed" || bad "files were installed despite refusal"
+
+# an untracked .gitignore (fresh project, never committed) is fine: install proceeds and commits it
+t9="$(tmpdir)/proj9"; mkdir -p "$t9"; git -C "$t9" init -q; printf 'dist/\n' > "$t9/.gitignore"
+expect_exit "untracked .gitignore exits 0" 0 bash "$INIT" "$t9"
+grep -qxF "dist/" "$t9/.gitignore" && grep -qxF ".claude/smoke.log" "$t9/.gitignore" && ok "untracked .gitignore kept and extended" || bad "untracked .gitignore mangled: $(cat "$t9/.gitignore")"
+[ -z "$(git -C "$t9" status --porcelain)" ] && ok "untracked .gitignore: tree clean after init" || bad "untracked .gitignore: dirty tree"
+
+# install commit fails (no git identity): exit 2 with the hint, no ship line
+t9="$(tmpdir)/proj9"; nohome="$(tmpdir)"
+expect_exit "no git identity exits 2" 2 env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
+  HOME="$nohome" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.useConfigOnly GIT_CONFIG_VALUE_0=true bash "$INIT" "$t9"
+expect_contains "prints commit hint" "quickship: install" "$OUT"
+case "$OUT" in *"./ship.sh"*) bad "must not print the ship line when the commit failed";; *) ok "no ship line";; esac
+
 # usage and self-target
 expect_exit "target = repo root exits 2" 2 bash "$INIT" "$ROOT"
 expect_exit "no args exits 2" 2 bash "$INIT"
