@@ -11,7 +11,7 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 - The stub scan in `scripts/smoke.sh` reports `path:line` only, so a credential on a TODO line is never printed.
 - The secret scan now catches `github_pat_` tokens.
 - The health probe needs a 2xx answer; a redirect no longer counts as ready.
-- The deny rules block the real `.env` files again but no longer block `.env.example`, `.env.sample` or `.env.template`.
+- The deny rules name the usual `.env` files (`.env`, `.env.local`, `.env.production`, `.env.prod`, `.envrc`, ...) instead of `.env*`, so `.env.example`, `.env.sample` and `.env.template` are readable again. `smoke.sh` still fails on any other `.env*` in the tree.
 - `ship.sh` force-adds `IDEA.md`, so a project that ignores `*.md` still works.
 - `scripts/init.sh` stops with exit 2 when a copy fails, when `.gitignore` has uncommitted changes, or when the install commit fails.
 

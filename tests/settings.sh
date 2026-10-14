@@ -15,6 +15,16 @@ done
 for r in 'Bash(git push *)' 'Bash(gh pr merge *)' 'Read(./.env)' 'Bash(rm -rf*)' 'mcp__github__merge_pull_request' 'Bash(git -C * push*)' 'Read(**/.env)' 'mcp__github__push_files' 'Bash(git -C * reset --hard*)'; do
   expect_exit "deny contains $r" 0 py "assert '$r' in d['permissions']['deny']"
 done
+expect_exit "real .env files are denied for Read, Edit and Write, at any depth" 0 py "
+import fnmatch, re
+globs = {}
+for e in d['permissions']['deny']:
+    m = re.fullmatch(r'(Read|Edit|Write)\(\*\*/(.*)\)', e)
+    if m: globs.setdefault(m.group(1), []).append(m.group(2))
+for tool in ('Read', 'Edit', 'Write'):
+    for path in ('.env', '.env.local', '.env.production', '.env.prod', '.env.dev', '.envrc', 'config/.env', 'api/.env.development.local'):
+        assert any(fnmatch.fnmatchcase(path.split('/')[-1], g) for g in globs.get(tool, [])), (tool, path)
+"
 expect_exit "no deny entry blocks .env.example, config/.env.example or .env.sample" 0 py "
 import fnmatch, re
 for e in d['permissions']['deny']:

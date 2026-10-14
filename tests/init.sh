@@ -78,7 +78,7 @@ printf 'build/\n' > "$t8/.gitignore"; git -C "$t8" add .gitignore; git -C "$t8" 
 printf 'build/\nlocal-edit\n' > "$t8/.gitignore"
 head8="$(git -C "$t8" rev-parse HEAD)"; gi8="$(cat "$t8/.gitignore")"
 expect_exit "modified .gitignore exits 2" 2 bash "$INIT" "$t8"
-expect_contains "explains" ".gitignore has uncommitted changes; commit or stash them first" "$OUT"
+expect_contains "explains" ".gitignore has uncommitted changes; commit them first" "$OUT"
 [ "$(git -C "$t8" rev-parse HEAD)" = "$head8" ] && ok "nothing committed" || bad "a commit was made"
 [ "$(cat "$t8/.gitignore")" = "$gi8" ] && ok ".gitignore unchanged" || bad ".gitignore was modified"
 [ ! -e "$t8/CLAUDE.md" ] && [ ! -e "$t8/.claude" ] && ok "no files installed" || bad "files were installed despite refusal"
@@ -90,11 +90,20 @@ grep -qxF "dist/" "$t9/.gitignore" && grep -qxF ".claude/smoke.log" "$t9/.gitign
 [ -z "$(git -C "$t9" status --porcelain)" ] && ok "untracked .gitignore: tree clean after init" || bad "untracked .gitignore: dirty tree"
 
 # install commit fails (no git identity): exit 2 with the hint, no ship line
-t9="$(tmpdir)/proj9"; nohome="$(tmpdir)"
+t10="$(tmpdir)/proj10"; nohome="$(tmpdir)"
 expect_exit "no git identity exits 2" 2 env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
-  HOME="$nohome" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.useConfigOnly GIT_CONFIG_VALUE_0=true bash "$INIT" "$t9"
-expect_contains "prints commit hint" "quickship: install" "$OUT"
+  -u XDG_CONFIG_HOME -u GIT_CONFIG_GLOBAL -u EMAIL \
+  HOME="$nohome" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.useConfigOnly GIT_CONFIG_VALUE_0=true bash "$INIT" "$t10"
+expect_contains "prints commit hint with the path list" "quickship: install\" -- CLAUDE.md" "$OUT"
 case "$OUT" in *"./ship.sh"*) bad "must not print the ship line when the commit failed";; *) ok "no ship line";; esac
+
+# a copy failure undoes the files already copied, so a re-run installs everything
+t11="$(tmpdir)/proj11"; mkdir -p "$t11"; git -C "$t11" init -q; : > "$t11/.claude"
+expect_exit "copy failure exits 2" 2 bash "$INIT" "$t11"
+[ ! -e "$t11/CLAUDE.md" ] && ok "copy failure: partial files removed" || bad "copy failure left CLAUDE.md behind"
+rm -f "$t11/.claude"
+expect_exit "re-run after fixing the cause exits 0" 0 bash "$INIT" "$t11"
+[ -z "$(git -C "$t11" status --porcelain)" ] && [ -n "$(git -C "$t11" ls-files CLAUDE.md)" ] && ok "re-run installs and commits everything" || bad "re-run left a dirty tree: $(git -C "$t11" status --porcelain | head -3)"
 
 # usage and self-target
 expect_exit "target = repo root exits 2" 2 bash "$INIT" "$ROOT"
