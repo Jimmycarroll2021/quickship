@@ -2,9 +2,6 @@
 # Shared helpers for tests/*.sh. Source this file; call finish at the end.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export QS_PYTHON="${QS_PYTHON:-$(command -v python3 || command -v python)}"
-# Claude Code exports CLAUDE_PROJECT_DIR to its hooks, and the Stop hook's gate runs this suite in the harness
-# repo. Scripts under test read the frozen brief and runtime state from that directory, so an inherited value
-# points every fixture at the real repo instead of its own .claude/state. Each test sets it when it needs it.
 unset CLAUDE_PROJECT_DIR
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "  ok   $1"; }
@@ -18,7 +15,29 @@ expect_exit() {
 expect_contains() { # expect_contains <label> <needle> <haystack>
   case "$3" in *"$2"*) ok "$1";; *) bad "$1 (missing '$2' in: $(printf '%s' "$3" | tail -n 3))";; esac
 }
-# hook <name> <json>  -> feeds json on stdin to scripts/hooks/<name>
-hook() { printf '%s' "$2" | bash "$ROOT/scripts/hooks/$1"; }
+# mkfixture -> echoes a fresh git repo with a python http.server demo.sh, DEMO_SPEC.md and scripts/smoke.sh
+mkfixture() {
+  local d; d="$(tmpdir)"
+  git -C "$d" init -q
+  git -C "$d" config user.name test
+  git -C "$d" config user.email test@example.com
+  cat >"$d/server.py" <<'PYEOF'
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ("/", "/healthz"):
+            self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"ok")
+        else:
+            self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers()
+    def log_message(self, *a): pass
+HTTPServer(("", int(os.environ["PORT"])), H).serve_forever()
+PYEOF
+  printf '#!/usr/bin/env bash\nexec python3 server.py\n' >"$d/demo.sh"; chmod +x "$d/demo.sh"
+  printf 'run: ./demo.sh\nhealth: /healthz\n' >"$d/DEMO_SPEC.md"
+  mkdir -p "$d/scripts"; cp "$ROOT/scripts/smoke.sh" "$d/scripts/smoke.sh" 2>/dev/null
+  git -C "$d" add -A && git -C "$d" commit -qm fixture
+  echo "$d"
+}
 tmpdir() { mktemp -d "${TMPDIR:-/tmp}/qs-test.XXXXXX"; }
 finish() { echo "$(basename "$0"): $PASS passed, $FAIL failed"; [ "$FAIL" = 0 ]; }
