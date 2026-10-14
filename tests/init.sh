@@ -1,88 +1,83 @@
 #!/usr/bin/env bash
-# scripts/init.sh: one-command bootstrap of the harness into a target project, --force and --upgrade,
-# plus the Windows .cmd wrappers. No LLM calls.
-# QS_INIT_NESTED=1 skips the "run the installed suite" case so an installed copy cannot recurse forever.
+# scripts/init.sh: one-way copy of the harness into a target project. No LLM calls.
 source "$(dirname "$0")/lib.sh"
 INIT="$ROOT/scripts/init.sh"
-manifest_files() { # expand scripts/manifest.txt globs against the tree in $1
-  ( cd "$1" && shopt -s globstar nullglob && while IFS= read -r p || [ -n "$p" ]; do
-      p="${p%%#*}"; p="${p//[$'\r\t ']/}"; [ -z "$p" ] && continue
-      for f in $p; do [ -f "$f" ] && echo "$f"; done
-    done < "$ROOT/scripts/manifest.txt" )
-}
-sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+FILES="CLAUDE.md .claude/settings.json .claude/agents/shaper.md .claude/agents/builder.md .claude/agents/verifier.md .claude/agents/polisher.md .claude/commands/shape.md .claude/commands/build.md .claude/commands/verify.md .claude/commands/polish.md scripts/smoke.sh scripts/stop_hook.sh ship.sh .gitattributes"
+snap() { ( cd "$1" && find . -path ./.git -prune -o -type f -print | sort ); }
 
-# --- fresh install ---
+export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 t="$(tmpdir)/proj"
 expect_exit "fresh target exits 0" 0 bash "$INIT" "$t"
-expect_contains "fresh install reports adds" "add: scripts/gate.sh" "$OUT"
-expect_contains "fresh install prints next steps" "next: edit BRIEF.yaml" "$OUT"
-expect_contains "fresh install points at the idea path" "from a raw idea" "$OUT"
-missing=""
-for f in $(manifest_files "$ROOT"); do [ -f "$t/$f" ] || missing="$missing $f"; done
-[ -z "$missing" ] && ok "every manifest file installed" || bad "missing in target:$missing"
-[ -d "$t/.git" ] && ok "target is a git repo" || bad "no .git in target"
-[ "$(cat "$t/.quickship/VERSION")" = "$(cat "$ROOT/VERSION")" ] && ok ".quickship/VERSION matches source" || bad ".quickship/VERSION mismatch"
-expect_contains "manifest.sha256 records diffbase" "  scripts/diffbase.sh" "$(cat "$t/.quickship/manifest.sha256")"
-for line in ".claude/worktrees/" ".claude/state/" "work/_untrusted/" "__pycache__/"; do
-  grep -qxF -- "$line" "$t/.gitignore" && ok ".gitignore has $line" || bad ".gitignore lacks $line"
+expect_contains "prints next step" "next: cd \"$(cd "$t" && pwd -P)\" && ./ship.sh \"your idea\"" "$OUT"
+[ -z "$(git -C "$t" status --porcelain)" ] && ok "tree clean after init" || bad "tree not clean after init: $(git -C "$t" status --porcelain | head -n 3)"
+[ "$(git -C "$t" log -1 --format=%s)" = "quickship: install" ] && ok "install commit message" || bad "last commit is: $(git -C "$t" log -1 --format=%s 2>&1)"
+for f in $FILES; do [ -f "$t/$f" ] && ok "installed $f" || bad "missing $f"; done
+[ -d "$t/.git" ] && ok "git initialised" || bad "no .git in target"
+for f in scripts/smoke.sh scripts/stop_hook.sh ship.sh; do [ -x "$t/$f" ] && ok "$f executable" || bad "$f not executable"; done
+grep -qxF ".claude/smoke.log" "$t/.gitignore" && ok ".gitignore has smoke.log" || bad ".gitignore lacks .claude/smoke.log"
+grep -qxF ".claude/state/" "$t/.gitignore" && ok ".gitignore has state/" || bad ".gitignore lacks .claude/state/"
+grep -qxF "node_modules/" "$t/.gitignore" && ok ".gitignore has node_modules/" || bad ".gitignore lacks node_modules/"
+grep -qxF "__pycache__/" "$t/.gitignore" && ok ".gitignore has __pycache__/" || bad ".gitignore lacks __pycache__/"
+for f in scripts/gate.sh scripts/policy.py scripts/runner.py .claude/agents/worker.md BRIEF.example.yaml .quickship; do
+  [ -e "$t/$f" ] && bad "target must not contain $f" || ok "no $f in target"
 done
-# the harness's own imports write bytecode under scripts/__pycache__; it must not surface as untracked project files
-(cd "$t" && bash scripts/gate.sh >/dev/null 2>&1)   # quality.py imports runtime and policy
-pyc="$(git -C "$t" ls-files --others --exclude-standard | grep -c '\.pyc$')"
-[ "$pyc" = 0 ] && ok "bytecode written by a harness command is ignored" || bad "bytecode surfaces as $pyc untracked .pyc file(s)"
-[ -f "$t/docs/decisions.md" ] && ok "docs/decisions.md created" || bad "docs/decisions.md missing"
-expect_contains "decisions.md has the table header" "| date | task | change | why |" "$(cat "$t/docs/decisions.md")"
-[ -f "$t/BRIEF.yaml" ] && ok "BRIEF.yaml created from example" || bad "BRIEF.yaml missing"
-expect_contains "run.cmd installed" "bash.exe" "$(cat "$t/run.cmd")"
 
-# --- the installed copy's own suite passes (about a minute; skipped when nested) ---
-if [ -z "${QS_INIT_NESTED:-}" ]; then
-  expect_exit "installed suite passes in the target" 0 env QS_INIT_NESTED=1 bash -c "cd '$t' && bash tests/run.sh"
-fi
-
-# --- idempotent second run ---
+# second run: skips everything, changes nothing
+before="$(snap "$t")"
 expect_exit "second run exits 0" 0 bash "$INIT" "$t"
-expect_contains "second run ends with unchanged" "unchanged" "$(printf '%s' "$OUT" | tail -n 1)"
+for f in $FILES; do expect_contains "second run skips $f" "skip $f" "$OUT"; done
+[ "$(snap "$t")" = "$before" ] && ok "second run changes no files" || bad "second run changed the file set"
+[ "$(grep -cxF .claude/smoke.log "$t/.gitignore")" = 1 ] && ok ".gitignore not duplicated" || bad ".gitignore duplicated"
 
-# --- a locally modified file is skipped, --force restores it ---
-echo "# local edit" >> "$t/scripts/diffbase.sh"
-expect_exit "third run exits 0" 0 bash "$INIT" "$t"
-expect_contains "modified file is skipped" "skip (modified): scripts/diffbase.sh" "$OUT"
-grep -q "# local edit" "$t/scripts/diffbase.sh" && ok "modified file left alone" || bad "modified file was overwritten"
-expect_exit "--force exits 0" 0 bash "$INIT" "$t" --force
-[ "$(sha "$t/scripts/diffbase.sh")" = "$(sha "$ROOT/scripts/diffbase.sh")" ] && ok "--force restores the file" || bad "--force did not restore"
+# a modified CLAUDE.md is kept byte-identical
+t2="$(tmpdir)/proj2"; mkdir -p "$t2"; printf 'my own rules\n' > "$t2/CLAUDE.md"
+expect_exit "existing CLAUDE.md run exits 0" 0 bash "$INIT" "$t2"
+[ "$(cat "$t2/CLAUDE.md")" = "my own rules" ] && ok "CLAUDE.md kept" || bad "CLAUDE.md was overwritten"
+expect_contains "reports skip CLAUDE.md" "skip CLAUDE.md" "$OUT"
 
-# --- upgrade from a newer harness: untouched files refresh, modified files are kept ---
-echo "# local edit" >> "$t/scripts/diffbase.sh"
-new="$(tmpdir)/harness"
-expect_exit "stage a newer harness copy" 0 bash "$INIT" "$new"
-echo 9.9.9 > "$new/VERSION"
-echo "# v9 change" >> "$new/scripts/diffbase.sh"
-echo "# v9 change" >> "$new/tests/diffbase.sh"
-expect_exit "--upgrade exits 0" 0 bash "$new/scripts/init.sh" "$t" --upgrade
-expect_contains "untouched file is upgraded" "upgrade: tests/diffbase.sh" "$OUT"
-expect_contains "modified file is kept on upgrade" "skip (modified): scripts/diffbase.sh" "$OUT"
-grep -q "# v9 change" "$t/tests/diffbase.sh" && ok "upgraded file has new content" || bad "tests/diffbase.sh not refreshed"
-grep -q "# local edit" "$t/scripts/diffbase.sh" && ok "modified file survives upgrade" || bad "scripts/diffbase.sh clobbered"
-[ "$(cat "$t/.quickship/VERSION")" = "$(cat "$ROOT/VERSION")" ] && ok "incomplete upgrade retains installed version" || bad "incomplete upgrade falsely bumped version"
-[ -f "$t/.quickship/conflicts" ] && ok "upgrade records unresolved conflicts" || bad "upgrade lost conflicts"
+# unrelated uncommitted changes are not swept into the install commit
+t3="$(tmpdir)/proj3"; mkdir -p "$t3"; git -C "$t3" init -q
+echo base > "$t3/app.txt"; git -C "$t3" add app.txt; git -C "$t3" commit -qm base
+echo changed > "$t3/app.txt"; echo new > "$t3/untracked.txt"
+expect_exit "init into dirty repo exits 0" 0 bash "$INIT" "$t3"
+por="$(git -C "$t3" status --porcelain)"
+expect_contains "unrelated modification stays uncommitted" " M app.txt" "$por"
+expect_contains "unrelated untracked file stays untracked" "?? untracked.txt" "$por"
+[ "$(git -C "$t3" log -1 --format=%s)" = "quickship: install" ] && ok "dirty repo: install commit made" || bad "dirty repo: last commit is $(git -C "$t3" log -1 --format=%s)"
+[ "$(git -C "$t3" show --stat --format= HEAD | grep -c 'app.txt\|untracked.txt')" = 0 ] && ok "install commit excludes unrelated files" || bad "install commit contains unrelated files"
 
-# --- CLAUDE.md is never overwritten ---
-echo "# my own rules" > "$t/CLAUDE.md"
-expect_exit "run with differing CLAUDE.md exits 0" 0 bash "$INIT" "$t" --force
-expect_contains "CLAUDE.md notice printed" 'notice: CLAUDE.md exists; merge the "PR sizing and evidence", "Hard rules" and "Lead loop" sections' "$OUT"
-[ "$(cat "$t/CLAUDE.md")" = "# my own rules" ] && ok "CLAUDE.md left alone even with --force" || bad "CLAUDE.md overwritten"
+# end to end: init, then ./ship.sh "idea" must reach claude (stubbed), not die on a dirty tree
+E="$(tmpdir)"; mkclaude_stub "$E"
+t4="$(tmpdir)/proj4"; bash "$INIT" "$t4" >/dev/null 2>&1
+e2e() { ( cd "$t4" && QS_CLAUDE_BIN="$E/bin/claude" ./ship.sh "an idea" ); }
+expect_exit "init then ship.sh exits 0" 0 e2e
+[ -s "$E/claude.args" ] && ok "ship.sh reached claude stub" || bad "ship.sh did not reach claude: $OUT"
 
-# --- refusals and wrappers ---
-expect_exit "source root as target exits 2" 2 bash "$INIT" "$ROOT"
-expect_exit "no target exits 2" 2 bash "$INIT"
-[ -f "$ROOT/run.cmd" ] && expect_contains "run.cmd finds bash.exe" "bash.exe" "$(cat "$ROOT/run.cmd")" || bad "run.cmd missing"
-if [ -z "${QS_INIT_NESTED:-}" ]; then # init.cmd ships with the harness only; the manifest does not install it
-  [ -f "$ROOT/init.cmd" ] && expect_contains "init.cmd finds bash.exe" "bash.exe" "$(cat "$ROOT/init.cmd")" || bad "init.cmd missing"
-  if command -v cmd.exe >/dev/null 2>&1; then # Windows only: the wrapper finds bash and passes the exit code through
-    expect_exit "init.cmd runs init.sh and relays exit 2" 2 cmd.exe //c "$(cygpath -w "$ROOT/init.cmd")"
-    expect_contains "init.cmd output comes from init.sh" "usage" "$OUT"
-  fi
-fi
+# target .gitignore ignoring .claude/: install still commits cleanly
+t5="$(tmpdir)/proj5"; mkdir -p "$t5"; git -C "$t5" init -q
+printf '.claude/\n' > "$t5/.gitignore"; git -C "$t5" add .gitignore; git -C "$t5" commit -qm base
+expect_exit "init with .claude/ ignored exits 0" 0 bash "$INIT" "$t5"
+[ -z "$(git -C "$t5" status --porcelain)" ] && ok "ignored .claude/: tree clean" || bad "ignored .claude/: dirty: $(git -C "$t5" status --porcelain | head -n 3)"
+[ -n "$(git -C "$t5" ls-files .claude/settings.json)" ] && ok "ignored .claude/: settings.json tracked" || bad "settings.json not tracked"
+
+# a committed non-executable ship.sh is not chmod'ed
+t6="$(tmpdir)/proj6"; mkdir -p "$t6"; git -C "$t6" init -q
+printf '#!/bin/sh\n' > "$t6/ship.sh"; chmod 644 "$t6/ship.sh"; git -C "$t6" add ship.sh; git -C "$t6" commit -qm base
+expect_exit "init with existing ship.sh exits 0" 0 bash "$INIT" "$t6"
+[ -z "$(git -C "$t6" status --porcelain)" ] && ok "existing ship.sh: no mode change" || bad "existing ship.sh dirtied: $(git -C "$t6" status --porcelain | head -n 3)"
+
+# usage and self-target
+expect_exit "target = repo root exits 2" 2 bash "$INIT" "$ROOT"
+expect_exit "no args exits 2" 2 bash "$INIT"
+expect_exit "-h exits 2" 2 bash "$INIT" -h
+
+# the installed smoke.sh runs
+F="$(tmpdir)/smoke"; bash "$INIT" "$F" >/dev/null 2>&1
+git -C "$F" config user.name test; git -C "$F" config user.email test@example.com
+cp "$(mkfixture)/server.py" "$F/server.py"
+printf '#!/usr/bin/env bash\nexec "%s" server.py\n' "$QS_PYTHON" >"$F/demo.sh"; chmod +x "$F/demo.sh"
+printf 'run: ./demo.sh\nhealth: /healthz\n' >"$F/DEMO_SPEC.md"
+git -C "$F" add -A && git -C "$F" commit -qm fixture
+OUT="$(cd "$F" && SMOKE_BOOT_TIMEOUT=10 bash scripts/smoke.sh 2>&1)"
+[ "$(printf '%s\n' "$OUT" | tail -n1)" = "PASS (spec skipped)" ] && ok "installed smoke.sh passes" || bad "installed smoke.sh: $(printf '%s' "$OUT" | tail -n 3)"
 finish

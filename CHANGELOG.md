@@ -4,6 +4,38 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-14
+
+### Changed
+
+- quickship is now an idea-to-demo pipeline driven interactively from a Claude Code session: `/shape`, `/build`,
+  `/verify`, `/polish`, with a human reading the output of each stage.
+- `scripts/smoke.sh` is the only verdict. It scans for secrets and stubs, boots `./demo.sh`, waits for the health
+  path and runs the smoke spec. No agent declares a demo done.
+- The Stop hook is bounded: it blocks once when `smoke.sh` fails, then lets go (`stop_hook_active`).
+- Deny rules cover `git -C`/`--git-dir`/`-c` push forms and `.env*` files anywhere in the tree.
+
+### Added
+
+- `ship.sh`, the launcher: clean-tree check, `IDEA.md`, a `demo/<slug>` branch, then an interactive session.
+- `scripts/smoke.sh` and `scripts/stop_hook.sh`.
+- The `shaper`, `builder`, `verifier` and `polisher` agents and the `/shape`, `/build`, `/verify` and `/polish` commands.
+- `DEMO_SPEC.md` (written by the shaper) and `DEMO_READY.md` (written by the polisher).
+- `examples/ideas/`: three short ideas that build offline.
+
+### Removed
+
+- The controller (`runner.py`), `policy.py` and the guard, idem, budget, anchor and agents hooks.
+- Worktree splitting and file ownership.
+- Ledgers and `RUN_STATE`, `RESULT` and `COMPLETION`.
+- The `check_criteria` grep gates, the overseer, `brief.py` and `BRIEF.yaml`, and preflight.
+- `gate.sh` and `quality.py`.
+- The `program`, `idea` and `run` `.sh` and `.cmd` wrappers.
+- The planner, worker, researcher, reviewer, security, strategist and overseer agents.
+- `.quickship` manifest tracking, the `docs/design` contracts, the runbook and release evidence.
+
+The heavy harness remains available at tag `v0.3.1`.
+
 ## [0.3.1] - 2026-10-09
 
 ### Added
@@ -171,6 +203,7 @@ First public release: a Claude Code harness that takes one Mission Brief and shi
 
 Seven unattended missions ran with this release, including a real application and a kill-and-resume run. The figures, recomputed in 0.1.1 from the full transcripts, are in the README under "Track record".
 
+[0.4.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Jimmycarroll2021/quickship/releases/tag/v0.2.0

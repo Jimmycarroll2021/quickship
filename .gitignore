@@ -1,4 +1,4 @@
-.claude/worktrees/
+.claude/smoke.log
 .claude/state/
-work/_untrusted/
 __pycache__/
+node_modules/
