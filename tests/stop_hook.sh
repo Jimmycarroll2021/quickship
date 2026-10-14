@@ -11,6 +11,7 @@ case "$(cat "$(dirname "$0")/../MODE")" in
   fail) echo "line one"; echo 'say "quoted" \ back'; echo "line three"; echo FAIL; exit 1;;
   esc) printf '\033[31mred FAIL\033[0m\n'; exit 1;;
   oneline) printf 'one "quoted" line'; exit 1;;
+  silent) exit 1;;
 esac
 SM
 echo pass > "$F/MODE"
@@ -33,9 +34,18 @@ isjson "$OUT" && ok "3 fail: valid JSON" || bad "3 fail: invalid JSON: $OUT"
 expect_contains "3 fail: quote preserved" 'quoted' "$OUT"
 
 OUT="$(run '{"stop_hook_active": true}')"; rc=$?
-[ $rc = 0 ] && ok "4 active: exit 0" || bad "4 active: exit $rc"
-expect_contains "4 active: systemMessage" 'systemMessage' "$OUT"
-isjson "$OUT" && ok "4 active: valid JSON" || bad "4 active: invalid JSON: $OUT"
+[ $rc = 0 ] && ok "4 active+failing: exit 0" || bad "4 active+failing: exit $rc"
+expect_contains "4 active+failing: systemMessage" 'systemMessage' "$OUT"
+isjson "$OUT" && ok "4 active+failing: valid JSON" || bad "4 active+failing: invalid JSON: $OUT"
+
+echo pass > "$F/MODE"
+OUT="$(run '{"stop_hook_active": true}')"; rc=$?
+[ $rc = 0 ] && [ -z "$OUT" ] && ok "4b active+passing: silent exit 0 (no false 'still failing')" || bad "4b active+passing (rc=$rc out=$OUT)"
+
+echo silent > "$F/MODE"
+OUT="$(run '{"stop_hook_active":false}')"
+isjson "$OUT" && ok "4c no-output failure: valid JSON" || bad "4c no-output: invalid JSON: $OUT"
+expect_contains "4c no-output failure: reason filled" 'no output' "$OUT"
 
 echo esc > "$F/MODE"
 OUT="$(run '{"stop_hook_active":false}')"

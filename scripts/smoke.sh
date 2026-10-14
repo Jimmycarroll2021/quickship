@@ -39,7 +39,7 @@ done < <(git ls-files -z --cached --others --exclude-standard)
 EXTRA=()
 # shellcheck disable=SC2206
 [ -n "${SMOKE_STUB_EXCLUDE:-}" ] && for p in $SMOKE_STUB_EXCLUDE; do EXTRA+=(":!$p"); done
-STUBS="$(git grep -nIE --untracked "TODO|FIXME|Coming soon|href=\"#\"|Not implemented|lorem ipsum" -- . ':!tests' ':!*.md' ':!docs' ':!scripts/smoke.sh' ':!.claude' ${EXTRA[@]+"${EXTRA[@]}"} 2>/dev/null)"
+STUBS="$(git grep -nIiE --untracked '(//|#|/\*|\*|<!--|--)[[:space:]]*(TODO|FIXME)\b|coming soon|href="#"|not implemented|lorem ipsum' -- . ':!tests' ':!*.md' ':!docs' ':!scripts/smoke.sh' ':!.claude' ${EXTRA[@]+"${EXTRA[@]}"} 2>/dev/null)"
 if [ -n "$STUBS" ]; then
   fail "stubs found (TODO/FIXME/placeholder):"
   while IFS= read -r l; do FAILS+=("  $l"); done <<<"$STUBS"
@@ -126,7 +126,7 @@ if [ "$healthy" = 1 ]; then
     if npx --no-install playwright --version >/dev/null 2>&1; then
       DEMO_URL="http://localhost:$PORT" npx --no-install playwright test tests/smoke.spec.ts || fail "smoke spec failed: tests/smoke.spec.ts"
     else
-      echo "SKIP: playwright not installed"; SKIPPED=1
+      fail "tests/smoke.spec.ts present but Playwright is not installed (npx --no-install playwright); demo.sh must install it"
     fi
   elif [ -f tests/smoke.py ]; then
     if [ -n "$PY" ]; then

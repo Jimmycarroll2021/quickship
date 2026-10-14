@@ -53,12 +53,12 @@ Models are aliases, not pinned versions. `/simplify` runs after `/build` and aft
 `bash scripts/smoke.sh` runs five checks in order:
 
 1. Secret scan of tracked and untracked files. Paths are printed, never values.
-2. Stub scan for `TODO`, "Coming soon", `href="#"`, "Not implemented" and lorem ipsum.
+2. Stub scan, case-insensitive, for "coming soon", `href="#"`, "not implemented", "lorem ipsum", and `TODO`/`FIXME` in comments (a `"TODO"` status value is fine).
 3. Boot `./demo.sh` on a free port, in its own process group.
 4. Wait for the `health:` path from `DEMO_SPEC.md` to return 200. If the process dies, it fails early and prints the log tail.
 5. Run `tests/smoke.spec.ts` (Playwright) or `tests/smoke.py` with `DEMO_URL` set. The spec must fail on console errors, page errors and 4xx or 5xx responses.
 
-The last line of output is `PASS` or `FAIL`; exit status is 0 or 1. `PASS (spec skipped)` means no spec could run, and a notice says why. Server output goes to `.claude/smoke.log`. The script never calls `claude`.
+The last line of output is `PASS` or `FAIL`; exit status is 0 or 1. `PASS (spec skipped)` means there is no spec file at all. A spec whose runner is missing (Playwright not installed) is a FAIL, not a skip. Server output goes to `.claude/smoke.log`. The script never calls `claude`.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -94,8 +94,8 @@ Every golden-path step names what must be visible afterwards, so the smoke spec 
 ## Guardrails
 
 - **Deny list.** `.claude/settings.json` blocks `git push` (including the `git -C` and `--git-dir` forms) from Bash, `gh pr merge`, the GitHub MCP push and merge tools, `git reset --hard`, `rm -rf`, `pip install`, and reads or edits of `.env*` anywhere in the tree via the Read, Edit and Write tools. Commands run inside python, node or another interpreter are not inspected.
-- **Sandbox.** Shell commands run in Claude Code's sandbox with a network allowlist of GitHub, npm, PyPI and the Playwright download hosts.
-- **Stop hook.** When `DEMO_SPEC.md` and `demo.sh` both exist, `scripts/stop_hook.sh` runs `smoke.sh` as Claude tries to stop. On FAIL it blocks once and shows the last 15 lines. If Claude stops again (`stop_hook_active` is set), it lets go with a message rather than looping.
+- **Sandbox.** Shell commands run in Claude Code's sandbox with a network allowlist of GitHub, npm, PyPI and the Playwright download hosts. Local port binding is allowed so `./demo.sh` can listen.
+- **Stop hook.** When `DEMO_SPEC.md` and `demo.sh` both exist, `scripts/stop_hook.sh` runs `smoke.sh` as Claude tries to stop. On FAIL it blocks once and shows the last 15 lines. If Claude stops again (`stop_hook_active` is set) and `smoke.sh` still fails, it lets go with a message rather than looping; if it passes by then, it stays silent. The hook has a 900 s budget.
 - **Web access.** Only the `shaper` has `WebSearch`. The verifier has no Write or Edit tools.
 
 quickship is a development aid, not a security sandbox. Use it on projects and dependencies you trust.

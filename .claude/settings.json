@@ -67,7 +67,13 @@
       "Bash(git * push*)",
       "Bash(git -C * push*)",
       "Bash(git --git-dir*)",
-      "Bash(git -c *)"
+      "Bash(git -c *)",
+      "Bash(git -C * reset --hard*)",
+      "Bash(git -C * branch -D*)",
+      "Bash(git -C * checkout -- *)",
+      "Bash(git -C * filter-branch*)",
+      "Bash(git -C * filter-repo*)",
+      "Bash(git * reset --hard*)"
     ]
   },
   "sandbox": {
@@ -87,7 +93,8 @@
         "cdn.playwright.dev",
         "playwright.download.prss.microsoft.com",
         "playwright.azureedge.net"
-      ]
+      ],
+      "allowLocalBinding": true
     }
   },
   "attribution": {
@@ -100,7 +107,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/stop_hook.sh",
-            "timeout": 300
+            "timeout": 900
           }
         ]
       }

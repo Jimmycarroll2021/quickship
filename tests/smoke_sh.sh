@@ -73,4 +73,19 @@ expect_exit "exit 1" 1 run "$F"
 expect_contains "names file" "gkey.txt" "$OUT"
 case "$OUT" in *"$key"*) bad "key value leaked";; *) ok "key not printed";; esac
 
+echo "11. Playwright spec present but Playwright not installed fails"
+F="$(mkfixture)"; mkdir -p "$F/tests" "$F/bin"; : >"$F/tests/smoke.spec.ts"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$F/bin/npx"; chmod +x "$F/bin/npx"
+OUT="$(PATH="$F/bin:$PATH" run "$F" 2>&1)"; rc=$?
+[ "$rc" = 1 ] && ok "exit 1" || bad "exit $rc: $(printf '%s' "$OUT" | tail -n 2)"
+expect_contains "names the missing runner" "Playwright is not installed" "$OUT"
+case "$OUT" in *"spec skipped"*) bad "must not report spec skipped";; *) ok "no spec-skipped PASS";; esac
+
+echo "12. stub scan: TODO enum value passes, Lorem Ipsum fails"
+F="$(mkfixture)"; mkdir -p "$F/src"; echo 'export const STATUS = "TODO";' >"$F/src/status.js"
+expect_exit "STATUS=TODO is not a stub" 0 run "$F"
+echo 'const copy = "Lorem Ipsum dolor sit amet";' >"$F/src/copy.js"
+expect_exit "Lorem Ipsum fails" 1 run "$F"
+expect_contains "names file" "copy.js" "$OUT"
+
 finish
