@@ -1,43 +1,31 @@
-# Contributing to quickship
+# Contributing
 
-Thanks for helping. quickship's job is to run software work with nobody watching, so every change is judged on one question: does it keep an unattended run safe, bounded and honest about what happened?
+## The most useful contribution
 
-## The most useful contribution: a run that misbehaved
+Report a demo that lied: `scripts/smoke.sh` printed PASS but the demo was half-baked (a dead button, a blank screen, an error only visible in the console). A false FAIL is just as welcome. Please include:
 
-Open an issue with these four things:
+- `DEMO_SPEC.md`
+- the output of `bash scripts/smoke.sh`
+- the tail of `.claude/smoke.log`
+- your OS, your shell and the output of `claude --version`
 
-1. **The brief.** Your `BRIEF.yaml`, with anything private removed.
-2. **The outcome.** `docs/RUN_STATE` and the relevant parts of `docs/REPORT.md`.
-3. **The denials.** The `DENY` lines from `.claude/state/hook_log`. They show exactly which guardrail fired and why.
-4. **Your environment.** OS, shell (Git Bash, WSL, macOS or Linux), `claude --version`, and Python version.
-
-A run that stalled, looped, overspent, asked for permission it couldn't get, or reported success it didn't have is exactly what we want to hear about.
+Never paste secrets, `.env` contents or private transcripts.
 
 ## Making a change
 
-```bash
-git clone https://github.com/Jimmycarroll2021/quickship
-cd quickship
-bash scripts/gate.sh       # compile check, full self-tests including installation, and secrets scan
-```
-
-The full gate is the acceptance entry point; there is no need to run the full suite twice.
-Windows self-tests default to one job, and installed-copy tests inherit that limit.
-Use `QS_TEST_JOBS=2` for bounded parallelism, or `QS_TEST_JOBS=1` for a serial run.
-Standalone harness self-tests have a 90-minute timeout. Set `QS_TEST_LOG_DIR` to a private,
-untracked directory to retain per-script output and exit codes; see the runbook for details.
-
-- **Test first.** Every hook and script has a test file in `tests/` using the helpers in `tests/lib.sh`. Add a failing case, watch it fail, then fix the code.
-- **Keep the contract in step.** If you change what a script reads, writes or prints, update `docs/design/contracts.md` in the same pull request. The agents read it.
-- **Guardrails only get stricter by accident, never looser.** A change that lets a hook allow something it used to deny needs a test for the new allow and an explanation in the pull request.
-- **Standard library only** for the Python scripts. PyYAML stays optional.
-- **Cross-platform.** CI runs on Ubuntu and Windows (Git Bash). Watch for CRLF output, backslash paths and `python3` vs `python`.
-- **Small pull requests** with one logical change each and a message that says why.
+1. Run `bash tests/run.sh`. It is plain bash and makes no model calls.
+2. Write the failing test first, then the change.
+3. `scripts/smoke.sh` may only get stricter. A change that lets a previously failing demo pass needs a very good reason in the PR.
+4. Scripts use the standard library and coreutils only. No new dependencies.
+5. Everything must work on Linux and on Windows through Git Bash.
+6. Run `/code-review medium` and address or answer the findings before you open the PR.
 
 ## Where things are
 
-`CLAUDE.md` is the agent contract and the lead loop. `scripts/hooks/` holds the guardrails, `scripts/*.py` the ledgers, budgets and criteria, and `.claude/agents/` the subagent prompts. The README's "Project layout" section has the full map.
+- `scripts/smoke.sh`: the gate. `scripts/stop_hook.sh`: the Stop hook wrapper. `scripts/init.sh`: the installer.
+- `.claude/agents/` and `.claude/commands/`: the four stages.
+- `.claude/settings.json`: deny list and the Stop hook.
+- `tests/`: one file per component, run by `tests/run.sh`.
+- `examples/ideas/`: short ideas to try the pipeline on.
 
-## Licence
-
-By contributing you agree that your contributions are licensed under the [MIT licence](LICENSE).
+Contributions are released under the MIT licence.
