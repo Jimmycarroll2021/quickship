@@ -8,15 +8,13 @@ if printf '%s' "$INPUT" | grep -Eq '"stop_hook_active"[[:space:]]*:[[:space:]]*t
   exit 0
 fi
 
-[ -f "$ROOT/DEMO_SPEC.md" ] && [ -f "$ROOT/demo.sh" ] || exit 0
-[ -f "$ROOT/scripts/smoke.sh" ] || exit 0
+[ -f "$ROOT/DEMO_SPEC.md" ] && [ -f "$ROOT/demo.sh" ] && [ -f "$ROOT/scripts/smoke.sh" ] || exit 0
 
 LOG="$(mktemp "${TMPDIR:-/tmp}/qs-smoke.XXXXXX")"
 trap 'rm -f "$LOG"' EXIT
-if ( cd "$ROOT" && bash scripts/smoke.sh ) >"$LOG" 2>&1; then
-  exit 0
-fi
+( cd "$ROOT" && bash scripts/smoke.sh ) >"$LOG" 2>&1 && exit 0
 
-REASON="$(tail -n 15 "$LOG" | tr -d '\r' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g')"
+# Strip control chars (keep tab/newline), then escape for JSON in one sed; join lines with \n.
+REASON="$(tail -n 15 "$LOG" | tr -d '\r' | tr -d '\000-\010\013-\037\177' | sed -e ':a' -e '$!{N;ba' -e '}' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$(printf '\t')/\\\\t/g" -e 's/\n/\\n/g')"
 printf '{"decision":"block","reason":"%s"}\n' "$REASON"
 exit 0

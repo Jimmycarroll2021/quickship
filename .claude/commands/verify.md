@@ -2,7 +2,7 @@
 description: Stage 3 — run the live smoke gate and explain every failure; loop builder fixes at most 3 times
 ---
 
-Delegate to the `verifier` subagent (read-only). It runs `bash scripts/smoke.sh` and reports `PASS` with coverage gaps, or `FAIL` with a numbered list of reproduction → error → suspect file.
+Delegate to the `verifier` subagent (read-only). It reports PASS (with any coverage gaps) or FAIL.
 
 If it reports FAIL, hand the exact list to the `builder` subagent to fix, then run the verifier again. Do this at most 3 times. If it still fails, stop and show me the last verifier report; do not keep looping and do not weaken any check.
 

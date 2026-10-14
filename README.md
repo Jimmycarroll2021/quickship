@@ -93,11 +93,10 @@ Every golden-path step names what must be visible afterwards, so the smoke spec 
 
 ## Guardrails
 
-- **Deny list.** `.claude/settings.json` blocks every `git push`, force-push, `gh pr merge`, the MCP merge tools, `git reset --hard`, `rm -rf`, `pip install`, and any read or write of `.env*` files.
+- **Deny list.** `.claude/settings.json` blocks `git push` (including the `git -C` and `--git-dir` forms) from Bash, `gh pr merge`, the GitHub MCP push and merge tools, `git reset --hard`, `rm -rf`, `pip install`, and reads or edits of `.env*` anywhere in the tree via the Read, Edit and Write tools. Commands run inside python, node or another interpreter are not inspected.
 - **Sandbox.** Shell commands run in Claude Code's sandbox with a network allowlist of GitHub, npm, PyPI and the Playwright download hosts.
 - **Stop hook.** When `DEMO_SPEC.md` and `demo.sh` both exist, `scripts/stop_hook.sh` runs `smoke.sh` as Claude tries to stop. On FAIL it blocks once and shows the last 15 lines. If Claude stops again (`stop_hook_active` is set), it lets go with a message rather than looping.
-- **Web access.** Only the `shaper` has `WebSearch`. The verifier cannot write or edit files.
-- **Budget.** `ship.sh` passes `QS_BUDGET_USD` (default 10) to Claude Code as a spending cap.
+- **Web access.** Only the `shaper` has `WebSearch`. The verifier has no Write or Edit tools.
 
 quickship is a development aid, not a security sandbox. Use it on projects and dependencies you trust.
 

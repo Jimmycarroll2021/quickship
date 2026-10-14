@@ -33,9 +33,9 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 HTTPServer(("", int(os.environ["PORT"])), H).serve_forever()
 PYEOF
-  printf '#!/usr/bin/env bash\nexec python3 server.py\n' >"$d/demo.sh"; chmod +x "$d/demo.sh"
+  printf '#!/usr/bin/env bash\nexec "%s" server.py\n' "$QS_PYTHON" >"$d/demo.sh"; chmod +x "$d/demo.sh"
   printf 'run: ./demo.sh\nhealth: /healthz\n' >"$d/DEMO_SPEC.md"
-  mkdir -p "$d/scripts"; cp "$ROOT/scripts/smoke.sh" "$d/scripts/smoke.sh" 2>/dev/null
+  mkdir -p "$d/scripts"; cp "$ROOT/scripts/smoke.sh" "$d/scripts/smoke.sh"
   git -C "$d" add -A && git -C "$d" commit -qm fixture
   echo "$d"
 }

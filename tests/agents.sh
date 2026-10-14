@@ -26,7 +26,7 @@ case "$(fm "$AG/shaper.md" tools)" in *WebSearch*) ok "shaper: has WebSearch";; 
 v="$(fm "$AG/verifier.md" tools)"
 case "$v" in *Write*|*Edit*) bad "verifier: has write tools ($v)";; *) ok "verifier: read-only tool list";; esac
 case "$(fm "$AG/verifier.md" disallowedTools)" in *Write*) ok "verifier: Write disallowed";; *) bad "verifier: Write not disallowed";; esac
-grep -q "never declare PASS\|never declare.*PASS\|only thing.*says PASS" "$AG/verifier.md" && ok "verifier: does not declare PASS" || bad "verifier: missing no-PASS rule"
+grep -q "never declare.*PASS\|only thing.*says PASS" "$AG/verifier.md" && ok "verifier: does not declare PASS" || bad "verifier: missing no-PASS rule"
 
 # builder owns the smoke spec; shaper never writes code
 grep -q "tests/smoke.spec.ts" "$AG/builder.md" && ok "builder: names the smoke spec" || bad "builder: no smoke spec instruction"
@@ -37,7 +37,7 @@ for f in "$AG"/*.md "$CM"/*.md "$ROOT/CLAUDE.md"; do
   if grep -qE "ledger\.py|step-bind|RUN_STATE|COMPLETION\.json|BRIEF\.yaml|check_criteria" "$f"; then bad "$(basename "$f"): references v0.3 machinery"; else ok "$(basename "$f"): no v0.3 machinery"; fi
 done
 
-# commands exist, have a description, and leave the next stage to the human
+# commands exist and have a description
 for c in shape build verify polish; do
   f="$CM/$c.md"
   [ -f "$f" ] && ok "command /$c exists" || { bad "command /$c missing"; continue; }

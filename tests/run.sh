@@ -18,7 +18,7 @@ if ! [[ "$jobs" =~ ^[1-9][0-9]{0,3}$ ]] || [ "$jobs" -gt 1024 ]; then
   echo "tests: QS_TEST_JOBS must be an integer from 1 to 1024" >&2
   exit 2
 fi
-echo "tests: claude $(claude --version 2>/dev/null | head -1 || echo unavailable)"
+v="$(claude --version 2>/dev/null | head -1)"; echo "tests: claude ${v:-unavailable}"
 
 files=()
 for t in tests/*.sh; do

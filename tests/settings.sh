@@ -12,8 +12,8 @@ expect_exit "exactly one Stop entry referencing stop_hook.sh" 0 py \
 for k in PreToolUse SubagentStop SessionStart PostToolUse PostToolUseFailure; do
   expect_exit "no $k hook" 0 py "assert '$k' not in d['hooks']"
 done
-for r in 'Bash(git push *)' 'Bash(gh pr merge *)' 'Read(./.env)' 'Bash(rm -rf*)' 'mcp__github__merge_pull_request'; do
-  expect_exit "deny contains $r" 0 py "assert sys.argv[0] or True; assert '$r' in d['permissions']['deny']"
+for r in 'Bash(git push *)' 'Bash(gh pr merge *)' 'Read(./.env)' 'Bash(rm -rf*)' 'mcp__github__merge_pull_request' 'Bash(git -C * push*)' 'Read(**/.env*)' 'mcp__github__push_files'; do
+  expect_exit "deny contains $r" 0 py "assert '$r' in d['permissions']['deny']"
 done
 expect_exit "sandbox.enabled is true" 0 py "assert d['sandbox']['enabled'] is True"
 finish

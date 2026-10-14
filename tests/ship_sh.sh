@@ -24,12 +24,20 @@ expect_exit "text idea exits 0" 0 run "A Todo App, with Tags!"
 [ "$(branch)" = "demo/a-todo-app-with-tags" ] && ok "slug branch" || bad "branch is $(branch)"
 [ "$(( $(git -C "$F" rev-list --count HEAD) - base ))" = 1 ] && ok "one new commit" || bad "commit count wrong"
 args="$(cat "$S/claude.args")"
-expect_contains "budget default 10" "--max-budget-usd 10" "$args"
-expect_contains "runs /shape" "/shape" "$args"
+case "$args" in *--max-budget-usd*) bad "args must not contain --max-budget-usd";; *) ok "no --max-budget-usd";; esac
+expect_contains "runs /shape" "Read IDEA.md, then run /shape" "$args"
 
-git -C "$F" switch -q main
-QS_BUDGET_USD=3 run "second idea" >/dev/null 2>&1
-expect_contains "QS_BUDGET_USD honoured" "--max-budget-usd 3" "$(cat "$S/claude.args")"
+# same idea twice, back to back, from the demo branch (IDEA.md already committed)
+rm -f "$S/claude.args"
+expect_exit "same idea again exits 0" 0 run "A Todo App, with Tags!"
+[ -s "$S/claude.args" ] && ok "same idea again reaches claude" || bad "same idea again did not reach claude"
+[ "$(branch)" = "demo/a-todo-app-with-tags-2" ] && ok "same idea again gets -2" || bad "same idea branch is $(branch)"
+
+# ./ship.sh IDEA.md with IDEA.md already committed
+rm -f "$S/claude.args"
+expect_exit "committed IDEA.md exits 0" 0 run IDEA.md
+[ -s "$S/claude.args" ] && ok "committed IDEA.md reaches claude" || bad "committed IDEA.md did not reach claude"
+expect_exit "--help exits 2" 2 run --help
 
 git -C "$F" switch -q main
 printf 'idea from a file\nmore\n' > "$F/my idea.md"; git -C "$F" add -A; git -C "$F" commit -qm f
@@ -38,7 +46,7 @@ cmp -s "$F/my idea.md" "$F/IDEA.md" && ok "IDEA.md equals file" || bad "IDEA.md 
 
 git -C "$F" switch -q main
 run "A Todo App, with Tags!" >/dev/null 2>&1
-[ "$(branch)" = "demo/a-todo-app-with-tags-2" ] && ok "duplicate slug gets -2" || bad "dup branch is $(branch)"
+[ "$(branch)" = "demo/a-todo-app-with-tags-4" ] && ok "duplicate slug gets next free suffix" || bad "dup branch is $(branch)"
 
 git -C "$F" switch -q main
 QS_CLAUDE_BIN=/nonexistent expect_exit "missing claude exits 2" 2 run "x idea"

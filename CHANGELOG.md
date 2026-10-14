@@ -13,6 +13,7 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 - `scripts/smoke.sh` is the only verdict. It scans for secrets and stubs, boots `./demo.sh`, waits for the health
   path and runs the smoke spec. No agent declares a demo done.
 - The Stop hook is bounded: it blocks once when `smoke.sh` fails, then lets go (`stop_hook_active`).
+- Deny rules cover `git -C`/`--git-dir`/`-c` push forms and `.env*` files anywhere in the tree.
 
 ### Added
 
