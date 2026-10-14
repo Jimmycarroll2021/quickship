@@ -4,7 +4,7 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
-## [0.4.0] - Unreleased
+## [0.4.0] - 2026-10-14
 
 ### Changed
 
