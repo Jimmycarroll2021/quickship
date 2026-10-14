@@ -8,7 +8,7 @@ snap() { ( cd "$1" && find . -path ./.git -prune -o -type f -print | sort ); }
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 t="$(tmpdir)/proj"
 expect_exit "fresh target exits 0" 0 bash "$INIT" "$t"
-expect_contains "prints next step" "next: cd \"$t\" && ./ship.sh \"your idea\"" "$OUT"
+expect_contains "prints next step" "next: cd \"$(cd "$t" && pwd -P)\" && ./ship.sh \"your idea\"" "$OUT"
 [ -z "$(git -C "$t" status --porcelain)" ] && ok "tree clean after init" || bad "tree not clean after init: $(git -C "$t" status --porcelain | head -n 3)"
 [ "$(git -C "$t" log -1 --format=%s)" = "quickship: install" ] && ok "install commit message" || bad "last commit is: $(git -C "$t" log -1 --format=%s 2>&1)"
 for f in $FILES; do [ -f "$t/$f" ] && ok "installed $f" || bad "missing $f"; done
