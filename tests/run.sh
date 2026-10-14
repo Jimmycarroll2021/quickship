@@ -59,5 +59,14 @@ for t in "${files[@]}"; do
   [ "$(cat "$workdir/$(basename "$t").rc")" = 0 ] || failed+=("$t")
 done
 
-if [ ${#failed[@]} -gt 0 ]; then echo "tests: FAIL ${failed[*]}" >&2; exit 2; fi
+if [ ${#failed[@]} -gt 0 ]; then
+  # On GitHub Actions, surface failing lines as annotations (readable via the checks API when logs are not).
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    for t in "${failed[@]}"; do
+      grep -E '^[[:space:]]*FAIL |^[a-z_]+\.sh: [0-9]+ passed' "$workdir/$(basename "$t").out" | head -n 8 \
+        | while IFS= read -r l; do printf '::error file=%s::%s\n' "$t" "$l"; done
+    done
+  fi
+  echo "tests: FAIL ${failed[*]}" >&2; exit 2
+fi
 echo "tests: PASS"
