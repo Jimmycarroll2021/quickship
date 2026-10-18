@@ -4,6 +4,15 @@ All notable changes to quickship are recorded here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- `examples/acceptance/cafe-prep.py`, a hidden acceptance check for the cafe-prep idea. The builder writes its own smoke spec, so a smoke PASS only shows the build agrees with itself; this check scores the build against fixtures and thresholds the agents never see. `tests/acceptance.sh` proves it passes a sensible build and fails one that bakes what it sold.
+- A Contract section in `examples/ideas/cafe-prep.md` pinning the input files, the sell-out rule and the `prep.sh` interface, so the check has something fixed to test against.
+
+### Changed
+
+- The `shaper` copies an idea's `## Contract` section word for word into `DEMO_SPEC.md` as `## contract`, and the `builder` builds that interface exactly. Without this the contract never reached the builder, so a sensible cafe-prep build would fail the hidden check.
+
 ## [0.4.1] - 2026-10-14
 
 ### Fixed
