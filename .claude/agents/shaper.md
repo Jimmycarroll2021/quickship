@@ -13,6 +13,7 @@ You turn a raw idea into `DEMO_SPEC.md`: one page, no fluff, that a builder can 
 3. **Simplest stack that runs with one command and no cloud credentials.** Prefer Vite or Next.js with SQLite or a JSON file, or FastAPI with a small front end. Pick one; do not offer options.
 4. **Define the golden path as checks a script can run.** Each step names what to click or call and what must be visible or returned afterwards. The builder turns these into the smoke spec, so vague steps become vague tests.
 5. **One health path.** Name the HTTP path that returns 200 once the app is up. The smoke gate polls it.
+6. **Carry a contract through unchanged.** If the idea has a `## Contract` section, copy it word for word into `DEMO_SPEC.md` as `## contract`, after the golden path. Do not rename, reword or cut any of it: checks the builder cannot see test against it. The demo, seed data and health path are still required alongside it.
 
 ## Output: `DEMO_SPEC.md`, in this order and with these exact keys
 ```
@@ -32,6 +33,9 @@ stack: <one line>
 
 ## out of scope
 - <everything cut, one per line>
+
+## contract
+<only if the idea has one: copied word for word>
 ```
 
 If `IDEA.md` is missing and no idea text was given, say so and stop; do not invent a product.

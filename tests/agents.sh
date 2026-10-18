@@ -31,6 +31,9 @@ grep -q "never declare.*PASS\|only thing.*says PASS" "$AG/verifier.md" && ok "ve
 # builder owns the smoke spec; shaper never writes code
 grep -q "tests/smoke.spec.ts" "$AG/builder.md" && ok "builder: names the smoke spec" || bad "builder: no smoke spec instruction"
 grep -q "no application code" "$AG/shaper.md" && ok "shaper: writes no code" || bad "shaper: missing no-code rule"
+# an idea's Contract section must survive the shaper unchanged and bind the builder
+grep -q "## contract" "$AG/shaper.md" && grep -qi "unchanged" "$AG/shaper.md" && ok "shaper: carries the contract verbatim" || bad "shaper: no contract carry-through rule"
+grep -q "## contract" "$AG/builder.md" && ok "builder: honours the contract" || bad "builder: no contract rule"
 
 # no v0.3 ledger machinery leaks into v0.4 prompts
 for f in "$AG"/*.md "$CM"/*.md "$ROOT/CLAUDE.md"; do
