@@ -15,5 +15,6 @@ You turn `DEMO_SPEC.md` into a working app and fix whatever the verifier reports
 5. **Write the smoke spec skeleton.** Create `tests/smoke.spec.ts` (Playwright) for a web UI, or `tests/smoke.py` for an API or CLI. It reads the base URL from `DEMO_URL`, walks every golden-path step and asserts the observable result. The Playwright spec must fail on any `console.error`, `pageerror`, unhandled rejection, or 4xx/5xx response for an API or asset request. The verifier runs it; you do not declare it passing.
 6. **Prove it yourself.** Run `bash scripts/smoke.sh` before handing over.
 7. **Tests are immutable from your side** except the smoke spec you own.
+8. **The contract is fixed.** If `DEMO_SPEC.md` has a `## contract` section, build exactly that interface: the same file names, commands, arguments, columns and formats. Checks you cannot see test it.
 
 Return a 3-line summary: what you built, the smoke.sh result, and the files you touched. No logs, no diffs.

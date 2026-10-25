@@ -37,6 +37,16 @@ cd ~/my-demo
 
 Before opening a pull request, run `/code-review medium`. A human merges; agents never do. Ready-made ideas are in `examples/ideas/`.
 
+`cafe-prep` also has a hidden acceptance check. It feeds the build a week of till exports and fails if bestsellers that sell out by noon do not get more prep, or pastries that get binned do not get less. Ship the idea file, not a one-line summary, so its Contract section reaches the agents. Then, after `/polish`, run the check against the built project:
+
+```bash
+./ship.sh /path/to/quickship/examples/ideas/cafe-prep.md
+# ...run /shape, /build, /verify and /polish, then leave the session...
+python3 /path/to/quickship/examples/acceptance/cafe-prep.py .
+```
+
+The check stays hidden because `init.sh` never installs `examples/`. It refuses to run if it sits inside the project it is checking, so never run `ship.sh` inside the quickship clone itself.
+
 ## What each stage does
 
 | Stage | Agent | Model | Writes | You decide |
@@ -87,9 +97,12 @@ stack: <one line>
 
 ## out of scope
 - <everything cut, one per line>
+
+## contract
+<only if the idea has a Contract section: copied word for word>
 ```
 
-Every golden-path step names what must be visible afterwards, so the smoke spec can assert it.
+Every golden-path step names what must be visible afterwards, so the smoke spec can assert it. If the idea has a `## Contract` section, the shaper copies it unchanged and the builder builds that interface exactly, because a hidden acceptance check tests it.
 
 ## Guardrails
 
@@ -121,6 +134,7 @@ quickship is a development aid, not a security sandbox. Use it on projects and d
 | `.claude/agents/` | `shaper`, `builder`, `verifier`, `polisher` |
 | `.claude/commands/` | `/shape`, `/build`, `/verify`, `/polish` |
 | `examples/ideas/` | three short ideas to try |
+| `examples/acceptance/` | hidden acceptance checks for those ideas, never installed into a project |
 | `tests/` | bash tests, no model calls; run with `bash tests/run.sh` |
 | `.github/` | CI workflow and pull request template |
 | `CHANGELOG.md`, `VERSION` | release history and current version |

@@ -27,5 +27,6 @@ Never paste secrets, `.env` contents or private transcripts.
 - `.claude/settings.json`: deny list and the Stop hook.
 - `tests/`: one file per component, run by `tests/run.sh`.
 - `examples/ideas/`: short ideas to try the pipeline on.
+- `examples/acceptance/`: hidden checks for those ideas. They score a finished build against what the idea promises, independently of the smoke spec the builder writes.
 
 Contributions are released under the MIT licence.
